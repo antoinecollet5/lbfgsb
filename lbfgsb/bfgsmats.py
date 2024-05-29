@@ -4,6 +4,17 @@ An *implicit* representation of the BFGS approximation to the Hessian matrix B
 B = theta * I - W * M * W'
 H = inv(B)
 
+Functions
+^^^^^^^^^
+
+.. autosummary::
+   :toctree: _autosummary
+
+    bmv
+    form_invMfactors
+    update_lbfgs_matrices
+    update_X_and_G
+
 Reference:
 [1] D. C. Liu and J. Nocedal (1989). On the limited memory BFGS method for large scale
 optimization.
@@ -23,7 +34,7 @@ def bmv(
     invMfactors: Tuple[NDArrayFloat, NDArrayFloat], v: NDArrayFloat
 ) -> NDArrayFloat:
     """
-    This subroutine computes the product of the 2m x 2m middle matrix with a vector v.
+    Return the product of the 2m x 2m middle matrix with a vector v.
 
     In the compact L-BFGS formula of B and a 2m vector `v`;
     it returns the product in `p`.
@@ -45,25 +56,30 @@ def bmv(
     # sp.linalg.solve_triangular(invMfactors[0], v, lower=True)
     # PART II: solve [ -D^(1/2)   D^(-1/2)*L'  ] [ p1 ] = [ p1 ]
     #                [  0         J'           ] [ p2 ]   [ p2 ].
-    return sp.linalg.solve_triangular(invMfactors[1], sp.linalg.solve_triangular(invMfactors[0], v, lower=True), lower=False)
+    return sp.linalg.solve_triangular(
+        invMfactors[1],
+        sp.linalg.solve_triangular(invMfactors[0], v, lower=True),
+        lower=False,
+    )
 
 
 def form_invMfactors(theta, STS, L, D) -> Tuple[NDArrayFloat, NDArrayFloat]:
     r"""
-    Perform the cholesky factorization of the inverse of M_k, defined in eq. (3.4) [1].
+    Return upper triangle of the cholesky factorization of the inverse of M_k.
 
-    Although Mk is not positive definite, but its inverse reads:
+    This is defined in eq. (3.4) [1].
 
-        [  -D       L'        ]
-        [   L       theta * S'*S]
+    Although Mk is not positive definite, but its inverse reads.
 
-    Hence its inverse can be factorized almost "symmetrically" by using Cholesky
-    factorizations
-    of the submatrices TODO: add ref to the phd manuscript.
+    [-D  L'          ]
+    [L   theta * S'*S]
+
+    Hence its inverse can be factorized almost `symmetrically` by using Cholesky
+    factorizations of the submatrices TODO: add ref to the phd manuscript.
     Now, the inverse of Mk, the middle matrix in B reads:
 
-         [  D^(1/2)      O ] [ -D^(1/2)  D^(-1/2)*L' ]
-         [ -L*D^(-1/2)   J ] [  0        J'          ]
+    [  D^(1/2)      O ] [ -D^(1/2)  D^(-1/2)*L' ]
+    [ -L*D^(-1/2)   J ] [  0        J'          ]
 
     With J @ J' = T = theta*Ss + L*D^(-1)*L'; T being definite positive,
     J is obtained by Cholesky factorization of T.
@@ -221,6 +237,7 @@ def update_X_and_G(
     eps: float = 2.2e-16,
 ) -> bool:
     """
+    Update the sequence of parameters X and gradients G with a strong wolfe condition.
 
     Parameters
     ----------

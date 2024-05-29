@@ -1,3 +1,24 @@
+"""
+Base functions used by the L-BFGS-B routine.
+
+Functions
+^^^^^^^^^
+
+.. autosummary::
+   :toctree: _autosummary
+
+    get_bounds
+    clip2bounds
+    count_var_at_bounds
+    projgr
+    projgr_ens
+    display_start
+    display_iter
+    display_iter_ensemble
+    display_results
+
+"""
+
 from typing import Optional, Tuple
 
 import numpy as np
@@ -10,7 +31,7 @@ def get_bounds(
     x0: NDArrayFloat, bounds: Optional[NDArrayFloat]
 ) -> Tuple[NDArrayFloat, NDArrayFloat]:
     """
-
+    Return the lower and upper bounds arrays.
 
     Parameters
     ----------
@@ -22,7 +43,7 @@ def get_bounds(
     Returns
     -------
     Tuple[NDArrayFloat, NDArrayFloat]
-        _description_
+        1-D arrays with lower and upper bounds respectively.
 
     Raises
     ------

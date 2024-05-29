@@ -12,6 +12,14 @@ After passing a break point, one or more coordinates of x will be fixed at the b
 We search the first local minimum of m(x) by examining the intervals [t[i-1], t[i]]
 sequentially.
 
+Functions
+^^^^^^^^^
+
+.. autosummary::
+   :toctree: _autosummary
+
+    get_cauchy_point
+
 Reference:
 [1] R. H. Byrd, P. Lu, and J. Nocedal (1995). A limited memory algorithm for bound
 constrained optimization.

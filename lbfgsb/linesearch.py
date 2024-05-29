@@ -7,6 +7,15 @@ satisfies the strong Wolfe condition
 \f$f(x+\alpha d) \le f(x) + \alpha\mu g(x)^T d\f$ and \f$|g(x+\alpha d)^T d| \le
 \eta|g(x)^T d|\f$.
 
+Functions
+^^^^^^^^^
+
+.. autosummary::
+   :toctree: _autosummary
+
+    max_allowed_steplength
+    line_search
+
 Reference:
 [1] Moré, J. J., & Thuente, D. J. (1994). Line search algorithms with guaranteed
 sufficient decrease.

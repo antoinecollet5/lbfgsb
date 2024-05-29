@@ -1,6 +1,4 @@
 """
-@author: Antoine COLLET.
-
 This code is a python port of the famous implementation of Limited-memory
 Broyden-Fletcher-Goldfarb-Shanno (L-BFGS), algorithm 778 written in Fortran [2,3]
 (last update in 2011).
@@ -15,10 +13,64 @@ wolfe conditions parameters for the line search). Third,
 implement additional functionalities that require significant modification of
 the code core.
 
-Additional features
---------------------
-Explain about objective function update on the fly.
-TODO: point to the doc of the main routine.
+Main interface
+^^^^^^^^^^^^^^
+
+Interface for scalar function minimization with L-BFGS-B.
+
+.. autosummary::
+   :toctree: _autosummary
+
+    minimize_lbfgsb
+
+Utilitairies
+^^^^^^^^^^^^
+
+Additional utilitairy functions to work with inputs or outputs.
+
+.. autosummary::
+   :toctree: _autosummary
+
+    extract_hess_inv_diag
+
+Benchmark functions
+^^^^^^^^^^^^^^^^^^^
+
+Provide the following function and their gradients to benchmark our implementation.
+
+.. autosummary::
+   :toctree: _autosummary
+
+    ackley
+    ackley_grad
+    griewank
+    griewank_grad
+    quartic
+    quartic_grad
+    rastrigin
+    rastrigin_grad
+    rosenbrock
+    rosenbrock_grad
+    sphere
+    sphere_grad
+    styblinski_tang
+    styblinski_tang_grad
+
+Inner functions
+^^^^^^^^^^^^^^^
+
+Inner functions of L-BFGS-B.
+
+.. autosummary::
+   :toctree: _autosummary
+
+    base
+    bfgsmats
+    cauchy
+    linesearch
+    scalar_function
+    subspacemin
+
 
 References
 ----------
@@ -32,18 +84,9 @@ References
     FORTRAN routines for large scale bound constrained optimization (2011),
     ACM Transactions on Mathematical Software, 38, 1.
 
-Provide the following benchmark functions.
-
-    ackley
-    griewank
-    quartic
-    rastrigin
-    rosenbrock
-    sphere
-    styblinski_tang
-
 """
 
+from lbfgsb import base, bfgsmats, cauchy, linesearch, scalar_function, subspacemin
 from lbfgsb.__about__ import __author__, __email__, __version__
 from lbfgsb.benchmarks import (
     ackley,
@@ -59,12 +102,10 @@ from lbfgsb.benchmarks import (
     sphere,
     sphere_grad,
     styblinski_tang,
-    styblinski_tang_grad
+    styblinski_tang_grad,
 )
 from lbfgsb.main import minimize_lbfgsb
 from lbfgsb.utils import extract_hess_inv_diag
-
-# TODO: add references to all internal functions
 
 __all__ = [
     "minimize_lbfgsb",
@@ -73,10 +114,23 @@ __all__ = [
     "__email__",
     "__version__",
     "ackley",
+    "ackley_grad",
     "griewank",
+    "griewank_grad",
     "quartic",
+    "quartic_grad",
     "rastrigin",
+    "rastrigin_grad",
     "rosenbrock",
+    "rosenbrock_grad",
     "sphere",
+    "sphere_grad",
     "styblinski_tang",
+    "styblinski_tang_grad",
+    "base",
+    "bfgsmats",
+    "cauchy",
+    "linesearch",
+    "scalar_function",
+    "subspacemin",
 ]

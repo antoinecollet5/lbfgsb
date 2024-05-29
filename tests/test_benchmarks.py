@@ -5,7 +5,6 @@ from typing import Callable
 import numdifftools as nd
 import numpy as np
 import pytest
-
 from lbfgsb import (
     ackley,
     ackley_grad,

@@ -2,10 +2,9 @@
 
 import numpy as np
 import scipy.linalg
+from lbfgsb import extract_hess_inv_diag
 from numpy.testing import assert_allclose
 from scipy.optimize import minimize
-
-from lbfgsb import extract_hess_inv_diag
 
 
 def test_1():

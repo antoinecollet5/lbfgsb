@@ -1,8 +1,7 @@
 import numpy as np
-from scipy.optimize import minimize
-
 from lbfgsb import minimize_lbfgsb
 from lbfgsb.types import NDArrayFloat
+from scipy.optimize import minimize
 
 
 # Definition of some test functions

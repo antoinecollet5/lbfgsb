@@ -1,5 +1,5 @@
 """
-Provide the following benchmark functions.
+Provide the following benchmark functions and their gradients.
 - ackley
 - griewank
 - quadratic
@@ -10,6 +10,7 @@ Provide the following benchmark functions.
 """
 
 import numpy as np
+
 from lbfgsb.types import NDArrayFloat
 
 
@@ -47,8 +48,8 @@ def ackley_grad(x: NDArrayFloat) -> NDArrayFloat:
 
     Returns
     -------
-    float
-        The value of the Ackley function.
+    NDArrayFloat
+        The gradient of the Ackley function.
 
     """
     x = np.asarray(x)
@@ -96,8 +97,8 @@ def griewank_grad(x: NDArrayFloat) -> NDArrayFloat:
 
     Returns
     -------
-    float
-        The value of the Griewank function.
+    NDArrayFloat
+        The gradient of the Griewank function.
 
     """
     x = np.asarray(x)
@@ -139,8 +140,8 @@ def quartic_grad(x: NDArrayFloat) -> NDArrayFloat:
 
     Returns
     -------
-    float
-        The value of the Quartic function.
+    NDArrayFloat
+        The gradient of the Quartic function.
 
     """
     x = np.asarray(x)
@@ -180,8 +181,8 @@ def rastrigin_grad(x: NDArrayFloat) -> NDArrayFloat:
 
     Returns
     -------
-    float
-        The value of the Rastrigin function.
+    NDArrayFloat
+        The gradient of the Rastrigin function.
 
     """
     x = np.asarray(x)
@@ -299,8 +300,8 @@ def styblinski_tang_grad(x: NDArrayFloat) -> NDArrayFloat:
 
     Returns
     -------
-    float
-        The value of the Styblinski-Tang function.
+    NDArrayFloat
+        The gradient of the Styblinski-Tang function.
 
     """
     x = np.asarray(x)

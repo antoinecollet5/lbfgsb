@@ -8,23 +8,12 @@ Welcome to lbfgsb's documentation!
    :caption: Contents:
 
    installation
+   api_reference
    usage
    contributing
    bibliography
-   authors
    changelog
-
-API Reference
-=============
-
-Contents:
-
-.. toctree::
-   :maxdepth: 2
-   :caption: API reference
-
-   api_reference
-
+   authors
 
 Indices and tables
 ==================

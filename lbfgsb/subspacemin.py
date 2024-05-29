@@ -13,6 +13,18 @@ ignoring the box constraints, followed by a line search.
 TODO: Our implementation is
 an exact minimization subject to the bounds, based on the BOXCQP algorithm [2].
 
+Functions
+^^^^^^^^^
+
+.. autosummary::
+   :toctree: _autosummary
+
+    freev
+    form_k_from_xgza
+    form_k_from_wm
+    formk
+    direct_primal_subspace_minimization
+
 Reference:
 [1] R. H. Byrd, P. Lu, and J. Nocedal (1995). A limited memory algorithm for bound
 constrained optimization.
@@ -24,7 +36,7 @@ from typing import Deque, Optional, Tuple
 
 import numpy as np
 import scipy as sp
-from scipy.sparse import lil_array, spmatrix
+from scipy.sparse import lil_matrix, spmatrix
 
 from lbfgsb.bfgsmats import bmv
 from lbfgsb.types import NDArrayFloat, NDArrayInt
@@ -39,7 +51,7 @@ def freev(
     free_vars_old: Optional[NDArrayInt] = None,
 ) -> Tuple[NDArrayInt, spmatrix, spmatrix]:
     """
-    Get the free variables and build Z and A matrices (sparse).
+    Get the free variables and build sparse Z and A matrices.
 
     Parameters
     ----------
@@ -80,8 +92,8 @@ def freev(
     # Note that A^{T}Z = 0 and that  AA^T + ZZ^T == I.
 
     # We use sparse formats to save memory and get faster matrix products
-    Z = lil_array((n, nb_free_vars))
-    A = lil_array((n, nb_active_vars))
+    Z = lil_matrix((n, nb_free_vars))
+    A = lil_matrix((n, nb_active_vars))
     # Affect one
     Z[free_vars, np.arange(nb_free_vars)] = 1
     A[active_vars, np.arange(nb_active_vars)] = 1
@@ -115,7 +127,8 @@ def form_k_from_xgza(
     A: spmatrix,
     theta: float,
 ) -> NDArrayFloat:
-    """Form the matrix K.
+    """
+    Form the matrix K.
 
     The matrix K is defined by:
 
@@ -168,12 +181,24 @@ def form_k_from_wm(
     invMfactors: Tuple[NDArrayFloat, NDArrayFloat],
     theta: float,
 ) -> NDArrayFloat:
-    """Form the matrix K.
+    """
+    Form the matrix K.
 
     The matrix K is defined as M^{-1}(I - 1/theta M WT Z @ ZT @ W)).
 
     Parameters
     ----------
+    WTZ : NDArrayFloat
+        _description_
+    invMfactors : Tuple[NDArrayFloat, NDArrayFloat]
+        _description_
+    theta : float
+        _description_
+
+    Returns
+    -------
+    NDArrayFloat
+        _description_
     """
     # Instead we build K directly as M^{-1}(I - 1/theta M WT Z @ ZT @ W))
     K = invMfactors[0] @ invMfactors[1]
@@ -192,16 +217,42 @@ def formk(
     theta: float,
     is_assert_correct: bool = True,
 ) -> Optional[NDArrayFloat]:
-    """Form mk
+    """
+    Form mk.
 
-    Form  the LEL^T factorization of the indefinite
-    matrix    K = [-D -Y'ZZ'Y/theta     L_a'-R_z'  ]
-                    [L_a -R_z           theta*S'AA'S ]
-    where     E = [-I  0]
-                    [ 0  I]
+    Form  the LEL^T factorization of the indefinite matrix
+
+    K = [-D -Y'ZZ'Y/theta     L_a'-R_z'  ]
+        [L_a -R_z           theta*S'AA'S ]
+
+    where
+
+    E = [-I  0]
+        [ 0  I]
 
     Parameters
     ----------
+    X : Deque[NDArrayFloat]
+        _description_
+    G : Deque[NDArrayFloat]
+        _description_
+    Z : spmatrix
+        _description_
+    A : spmatrix
+        _description_
+    WTZ : NDArrayFloat
+        _description_
+    invMfactors : Tuple[NDArrayFloat, NDArrayFloat]
+        _description_
+    theta : float
+        _description_
+    is_assert_correct : bool, optional
+        _description_, by default True
+
+    Returns
+    -------
+    Optional[NDArrayFloat]
+        _description_
     """
     K = form_k_from_wm(WTZ, invMfactors, theta)
 
