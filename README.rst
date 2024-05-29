@@ -85,5 +85,5 @@ the code core.
     :target: https://mypy-lang.org/
     :alt: Checked with mypy
 
-.. |DOI| image:: https://zenodo.org/badge/DOI/10.5281/zenodo.8192031.svg
-   :target: https://doi.org/10.5281/zenodo.8192031
+.. |DOI| image:: https://zenodo.org/badge/DOI/10.5281/zenodo.11384588.svg
+   :target: https://doi.org/10.5281/zenodo.11384588
