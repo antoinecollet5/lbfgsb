@@ -273,7 +273,7 @@ def minimize_lbfgsb(
         search procedure (see
         `minpack2.dcsrch <https://ftp.mcs.anl.gov/pub/MINPACK-2/csrch/dcsrch.f>`_).
         In the fortran implementation algo 778, it is hardcoded to 0.1.
-        The default is 1e-5.
+        The default is 0.1.
         See :func:`line_search` parameters.
     eps_SY: float
         Parameter used for updating the L-BFGS matrices. The default is 2.2e-16.
