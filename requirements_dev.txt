@@ -22,11 +22,11 @@ nbsphinx==0.8.10
 nbsphinx-link
 jupyter_sphinx>=0.3.2
 sphinx-jsonschema>=1.15
-pygments==2.11.1
+pygments>=2.11.1
 sphinx-panels
 pydata-sphinx-theme
 sphinxcontrib-bibtex
-jinja2==3.0.3
+jinja2>=3.0.3
 
 numpy>=1.2
 scipy>=1.6.2
