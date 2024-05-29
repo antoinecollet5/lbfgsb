@@ -8,13 +8,13 @@ Installation
 Stable release
 --------------
 
-To install Python Reactive Transport Inversion Demonstrator, run this command in your terminal:
+To install lbfgsb, run this command in your terminal:
 
 .. code-block:: console
 
     $ pip install lbfgsb
 
-This is the preferred method to install Python Reactive Transport Inversion Demonstrator, as it will always install the most recent stable release.
+This is the preferred method to install lbfsgb, as it will always install the most recent stable release.
 
 If you don't have `pip`_ installed, this `Python installation guide`_ can guide
 you through the process.
@@ -26,7 +26,7 @@ you through the process.
 From sources
 ------------
 
-The sources for Python Reactive Transport Inversion Demonstrator can be downloaded from the `Gitlab repo`_.
+The sources for lbfsgb can be downloaded from the `Gitlab repo`_.
 
 You can either clone the public repository:
 

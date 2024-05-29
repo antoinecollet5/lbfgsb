@@ -32,7 +32,7 @@ Please see the `Merge Request Guidelines`_ for details on best developmental pra
 Documentation
 ~~~~~~~~~~~~~
 
-Python Reactive Transport Inversion Demonstrator could always use more documentation, whether as part of the official Python Reactive Transport Inversion Demonstrator docs, in docstrings, tutorials and even on the web in blog posts, articles and such.
+The project could always use more documentation, whether as part of the official lbfgsb docs, in docstrings, tutorials and even on the web in blog posts, articles and such.
 
 For docstrings, please use the `numpy docstring format <https://numpydoc.readthedocs.io/en/latest/format.html>`_.
 
@@ -66,13 +66,13 @@ Congratulations! The maintainers will now review your work and suggest any neces
 If no changes are required, a maintainer will "approve" the review.
 If you are
 Thank you very much
-for your hard work in improving Python Reactive Transport Inversion Demonstrator.
+for your hard work in improving the project.
 
 
 Setting up lbfgsb for local development
 ---------------------------------------
 
-Ready to contribute? Here's how to set up `Python Reactive Transport Inversion Demonstrator` for local development.
+Ready to contribute? Here's how to set up `lbfgsb` for local development.
 
 1. Fork the `lbfgsb` repo on GitLab.
 2. Clone your fork locally::

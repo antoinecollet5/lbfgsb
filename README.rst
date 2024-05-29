@@ -9,7 +9,7 @@ A python impementation of the famous L-BFGS-B quasi-Newton solver [1].
 This code is a python port of the famous implementation of Limited-memory
 Broyden-Fletcher-Goldfarb-Shanno (L-BFGS), algorithm 778 written in Fortran [2,3]
 (last update in 2011).
-Note that this is not a wrapper such as `minimize`` in scipy but a complete
+Note that this is not a wrapper like `minimize`` in scipy but a complete
 reimplementation (pure python).
 The original Fortran code can be found here: https://dl.acm.org/doi/10.1145/279232.279236
 
