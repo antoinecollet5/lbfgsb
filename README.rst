@@ -66,7 +66,7 @@ the code core.
     :target: https://codecov.io/gh/antoinecollet5/lbfgsb
     :alt: Coverage
 
-.. |Codacy| image:: https://app.codacy.com/project/badge/Grade/a3ad37554c5845e6a27e096e77dcca2f
+.. |Codacy| image:: https://app.codacy.com/project/badge/Grade/c41f65d98b824de394162520b0d8a17a
     :target: https://app.codacy.com/gh/antoinecollet5/lbfgsb/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade
     :alt: codacy
 
