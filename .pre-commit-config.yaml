@@ -1,0 +1,51 @@
+#!/bin/bash
+
+repos:
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v4.3.0
+  hooks:
+    - id: check-json
+    - id: check-yaml
+    - id: end-of-file-fixer
+    - id: trailing-whitespace
+- repo: https://github.com/PyCQA/autoflake
+  rev: v2.2.0
+  hooks:
+    -   id: autoflake
+- repo: local
+  hooks:
+  - id: black
+    name: black
+    description: "Black: The uncompromising Python code formatter"
+    entry: black
+    language: python
+    require_serial: true
+    types_or: [python, pyi]
+  - id: black-jupyter
+    name: black-jupyter
+    description:
+      "Black: The uncompromising Python code formatter (with Jupyter Notebook support)"
+    entry: black
+    language: python
+    require_serial: true
+    types_or: [python, pyi, jupyter]
+    additional_dependencies: [".[jupyter]"]
+  - id: codespell
+    name: codespell
+    entry: codespell
+    language: system
+    types: [python]
+    args: [
+      "docs tests",
+      "*.py *.rst *.md",
+    ]
+    exclude: >
+            (?x)^(
+                bibliography.bib
+            )$
+  - id: ruff
+    name: ruff
+    entry: ruff
+    language: python
+    types: [python]
+    args: [--fix, --exit-non-zero-on-fix]

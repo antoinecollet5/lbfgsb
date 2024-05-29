@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+    # on every branch
+    branches:
+      - '*'
+
+env:
+  PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
+  QT_DEBUG_PLUGINS: 1
+  QT_QPA_PLATFORM: offscreen
+
+jobs:
+  static_analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.9
+
+      - name: install libsuitesparse
+        run: sudo apt install -y libsuitesparse-dev
+
+      - name: Install dependencies
+        run: pip install -r requirements_dev.txt
+
+      - name: Run pre-commit
+        run: |
+          pip install pre-commit
+          pre-commit run --all-files
+        continue-on-error: false
+
+      - name: Upload pre-commit report
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: pre-commit-report
+          path: pre-commit-report
+
+  test:
+    runs-on: ubuntu-latest
+    env:
+      NUMBA_DISABLE_JIT : 1
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.9
+
+      - name: install libsuitesparse
+        run: sudo apt install -y libsuitesparse-dev
+
+      - name: Install dependencies
+        run: pip install -r requirements_dev.txt
+
+      - name: Install project
+        run: pip install -e .
+
+      - name: Set up xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          sleep 3
+
+      - name: Run tests with coverage
+        run: |
+          xvfb-run py.test -s --cov=lbfgsb --cov-report xml --cov-report html --cov-report term --cov-config=.coveragerc --color=yes
+        continue-on-error: false
+
+      - name: Submit coverage
+        run: |
+          pip install codecov
+          codecov --token=${{ secrets.CODECOV_TOKEN }}
+
+  tox:
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 4
+      matrix:
+        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11"]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: install libsuitesparse
+        run: sudo apt install -y libsuitesparse-dev
+
+      - name: Install tox
+        run: python3 -m pip install tox
+
+      - name: Set up xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          sleep 3
+
+      - name: Run tox
+        run: xvfb-run tox
+
+      - name: Upload distribution artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: dist
+          path: dist/*.whl
