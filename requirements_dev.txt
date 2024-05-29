@@ -17,10 +17,9 @@ flake8
 flake8-html
 ruff
 
-sphinx>=2 # jupyter_sphinx requires sphinx>=2
+sphinx>=5 # jupyter_sphinx requires sphinx>=2
 nbsphinx==0.8.10
 nbsphinx-link
-sphinxcontrib-blockdiag
 jupyter_sphinx>=0.3.2
 sphinx-jsonschema>=1.15
 pygments==2.11.1
