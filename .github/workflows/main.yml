@@ -75,10 +75,10 @@ jobs:
           xvfb-run py.test -s --cov=lbfgsb --cov-report xml --cov-report html --cov-report term --cov-config=.coveragerc --color=yes
         continue-on-error: false
 
-      - name: Submit coverage
-        run: |
-          pip install codecov
-          codecov --token=${{ secrets.CODECOV_TOKEN }}
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4.0.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   tox:
     runs-on: ubuntu-latest
