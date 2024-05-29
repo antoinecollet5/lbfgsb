@@ -131,7 +131,7 @@ master_doc = "index"
 project = "lbfgsb"
 author = lbfgsb.__author__
 # pylint: disable=W0622 # Redefining built-in 'copyright'
-copyright = f"2023-{datetime.datetime.today().year}, {author}"
+copyright = f"2024-{datetime.datetime.today().year}, {author}"
 
 
 # The version info for the project you're documenting, acts as replacement
