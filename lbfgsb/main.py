@@ -38,11 +38,13 @@ import copy
 import logging
 from collections import deque
 from dataclasses import dataclass
-from typing import Callable, Deque, Optional, Tuple, Union
+from typing import Any, Callable, Deque, Optional, Tuple, Union
 
 import numpy as np
-from scipy.optimize._lbfgsb_py import LbfgsInvHessProduct  # noqa : F401
-from scipy.optimize._optimize import OptimizeResult
+from scipy.optimize import (
+    LbfgsInvHessProduct,  # noqa : F401
+    OptimizeResult,
+)
 
 from lbfgsb.base import (
     clip2bounds,
@@ -76,9 +78,9 @@ class InternalState:
 def minimize_lbfgsb(
     *,
     x0: NDArrayFloat,
-    fun: Optional[Callable[[NDArrayFloat, ...], float]] = None,
+    fun: Optional[Callable[[NDArrayFloat, Any], float]] = None,
     args: Tuple = (),
-    jac: Optional[Union[Callable[[NDArrayFloat, ...], NDArrayFloat], str, bool]] = None,
+    jac: Optional[Union[Callable[[NDArrayFloat, Any], NDArrayFloat], str, bool]] = None,
     update_fun_def: Optional[
         Callable[
             [
