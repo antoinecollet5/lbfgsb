@@ -2,12 +2,10 @@
 Credits
 =======
 
-This demonstrator project was initiated as part of Antoine COLLET's thesis (add ref)
+This project was initiated as part of Antoine COLLET's `PhD <https://theses.fr/s263802>`_
 between 2020 and 2024. Although the current version of the LBFGSB code was written
-in its entirety by Antoine COLLET, Irina SIN and Hervé CHAURIS, researchers
-at the Ecole des Mines de Paris and supervisors for this work, are the writters of the
-initial prototype (2020) and significantly contributed to the scientific content
-and to the derivation of the equations.
+in its entirety by Antoine COLLET and his supervisors Irina SIN and Hervé CHAURIS, researchers
+at the Ecole des Mines de Paris.
 
 Development Lead
 ----------------
