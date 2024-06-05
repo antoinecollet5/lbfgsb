@@ -555,7 +555,7 @@ def minimize_lbfgsb(
                 iprint, istate.nit, maxiter, x, grad, lb, ub, f0, _gtol, False
             )
 
-            display_iter(istate.nit + 1, sbgnrm, f0, iprint)
+            display_iter(istate.nit + 1, projgr(x, grad, lb, ub), f0, iprint)
 
             istate.nit += 1
 
