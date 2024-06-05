@@ -95,6 +95,7 @@ def line_search(
     ub: NDArrayFloat,
     above_iter: int,
     max_steplength_user: float,
+    is_boxed: bool,
     fun_and_grad: Callable[[NDArrayFloat], Tuple[float, NDArrayFloat]],
     ftol: float = 1e-3,
     gtol: float = 0.9,
@@ -141,6 +142,8 @@ def line_search(
         current iteration in optimization process.
     max_steplength : float
         Maximum steplength allowed.
+    is_boxed: bool
+        Whether all values have both lower and upper bounds.
     fun_and_grad : Callable[[NDArrayFloat], Tuple[float, NDArrayFloat]]
         Function returning both the objective function and its gradient with respect to
         a given vector x.
@@ -223,13 +226,10 @@ def line_search(
     dphi_m1 = dphi
     iter = 0
 
-    if above_iter == 0:
+    if above_iter == 0 and not is_boxed:
         steplength_0 = min(1.0 / np.sqrt(d.dot(d)), max_steplength)
     else:
         steplength_0 = 1.0
-
-    # print(f"max_steplength = {max_steplength}")
-    # print(f"steplength_0 = {steplength_0}")
 
     task = b"START"
 

@@ -53,6 +53,7 @@ from lbfgsb.base import (
     display_results,
     display_start,
     get_bounds,
+    is_any_inf,
     projgr,
 )
 from lbfgsb.bfgsmats import update_lbfgs_matrices
@@ -303,6 +304,9 @@ def minimize_lbfgsb(
     lb, ub = get_bounds(x0, bounds)
     max_steplength_user: float = copy.copy(max_steplength)
 
+    # True if all values have lower and upper bounds
+    is_boxed: bool = not is_any_inf([lb, ub])
+
     # applying the bounds to the initial guess x0
     n = x0.size
     x = clip2bounds(x0, lb, ub)
@@ -459,6 +463,7 @@ def minimize_lbfgsb(
             ub,
             istate.nit,
             max_steplength_user,
+            is_boxed,
             sf.fun_and_grad,
             ftol_linesearch,
             gtol_linesearch,

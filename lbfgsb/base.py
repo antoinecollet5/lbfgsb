@@ -8,6 +8,7 @@ Functions
    :toctree: _autosummary
 
     get_bounds
+    is_any_inf
     clip2bounds
     count_var_at_bounds
     projgr
@@ -20,7 +21,7 @@ Functions
 """
 
 import logging
-from typing import Optional, Tuple
+from typing import Optional, Sequence, Tuple
 
 import numpy as np
 from scipy.optimize._constraints import old_bound_to_new
@@ -70,6 +71,23 @@ def get_bounds(
     # initial vector must lie within the bounds. Otherwise ScalarFunction and
     # approx_derivative will cause problems
     return lb, ub
+
+
+def is_any_inf(arrs: Sequence[NDArrayFloat]) -> bool:
+    """
+    Return whether any of the values in the given arrays is inf.
+
+    Parameters
+    ----------
+    arrs : Sequence[NDArrayFloat]
+        Sequence of arrays.
+
+    Returns
+    -------
+    bool
+
+    """
+    return any([np.isinf(arr).any() for arr in arrs])
 
 
 def clip2bounds(x0: NDArrayFloat, lb: NDArrayFloat, ub: NDArrayFloat) -> NDArrayFloat:
@@ -153,7 +171,7 @@ def display_start(
         value of `iprint`, by default None.
 
     """
-    if iprint < 0 and logger is None:
+    if iprint < 0 or logger is None:
         return
     logger.info("RUNNING THE L-BFGS-B CODE")
     logger.info("           * * *")
