@@ -102,7 +102,6 @@ def minimize_lbfgsb(
     maxiter: int = 50,
     eps: float = 1e-8,
     maxfun: int = 15000,
-    iprint: int = -1,
     callback: Optional[Callable] = None,
     maxls: int = 20,
     finite_diff_rel_step: Optional[float] = None,
@@ -110,8 +109,9 @@ def minimize_lbfgsb(
     ftol_linesearch: float = 1e-3,
     gtol_linesearch: float = 0.9,
     xtol_linesearch: float = 1e-1,
-    logger: Optional[logging.Logger] = None,
     eps_SY: float = 2.2e-16,
+    iprint: int = -1,
+    logger: Optional[logging.Logger] = None,
 ) -> OptimizeResult:
     r"""
     Solves bound constrained optimization problems by using the compact formula
@@ -210,11 +210,6 @@ def minimize_lbfgsb(
         stop after maxfun has been reached.
     maxiter : int
         Maximum number of iterations.
-    iprint : int, optional
-        Controls the frequency of output. ``iprint < 0`` means no output;
-        ``iprint = 0``    print only one line at the last iteration;
-        ``0 < iprint < 99`` print also f and ``|proj g|`` every iprint iterations;
-        ``iprint >= 99``   print details of every iteration except n-vectors;
     callback : callable, optional
         Called after each iteration. It is a callable with
         the signature:
@@ -279,6 +274,14 @@ def minimize_lbfgsb(
         See :func:`line_search` parameters.
     eps_SY: float
         Parameter used for updating the L-BFGS matrices. The default is 2.2e-16.
+    iprint : int, optional
+        Controls the frequency of output. ``iprint < 0`` means no output;
+        ``iprint = 0``    print only one line at the last iteration;
+        ``0 < iprint < 99`` print also f and ``|proj g|`` every iprint iterations;
+        ``iprint >= 99``   print details of every iteration except n-vectors;
+    logger: Optional[Logger], optional
+        :class:`logging.Logger` instance. If None, nothing is displayed, no matter the
+        value of `iprint`, by default None.
 
     Returns
     -------
@@ -313,10 +316,6 @@ def minimize_lbfgsb(
     # values to extremities
     X: Deque[NDArrayFloat] = deque()
     G: Deque[NDArrayFloat] = deque()
-
-    # Saved parameters in linesearch
-    isave = np.zeros((2,), np.intc)
-    dsave = np.zeros((13,), float)
 
     # search direction for the minimization problem
     W: NDArrayFloat = np.zeros([n, 1])
@@ -401,8 +400,9 @@ def minimize_lbfgsb(
     # Note that interruptions due to maxfun are postponed
     # until the completion of the current minimization iteration.
     while projgr(x, grad, lb, ub) > _gtol and istate.nit < maxiter and sf.nfev < maxfun:
-        if iprint > 99:
-            logger.info(f"\nITERATION {istate.nit + 1}\n")
+        if iprint > 99 and logger is not None:
+            logger.info("\n")
+            logger.info(f"ITERATION {istate.nit + 1}\n")
 
         f0_old: float = copy.copy(f0)
         x.copy()
@@ -420,12 +420,15 @@ def minimize_lbfgsb(
             theta,
             len(X),
             maxcor,
-            iprint,
             istate.nit,
+            iprint,
+            logger,
         )
 
         # Get the free variables for the GCP
-        free_vars, Z, A = freev(dictCP["xc"], lb, ub, iprint, istate.nit, free_vars)
+        free_vars, Z, A = freev(
+            dictCP["xc"], lb, ub, istate.nit, free_vars, iprint, logger
+        )
 
         # subspace minimization: find the search direction for the minimization problem
         xbar: NDArrayFloat = direct_primal_subspace_minimization(
@@ -462,8 +465,7 @@ def minimize_lbfgsb(
             xtol_linesearch,
             maxls,
             iprint,
-            isave,
-            dsave,
+            logger,
         )
 
         if steplength is None:
@@ -552,15 +554,17 @@ def minimize_lbfgsb(
 
             # Result display
             display_results(
-                iprint, istate.nit, maxiter, x, grad, lb, ub, f0, _gtol, False
+                istate.nit, maxiter, x, grad, lb, ub, f0, _gtol, False, iprint, logger
             )
 
-            display_iter(istate.nit + 1, projgr(x, grad, lb, ub), f0, iprint)
+            display_iter(istate.nit + 1, projgr(x, grad, lb, ub), f0, iprint, logger)
 
             istate.nit += 1
 
     # Final display
-    display_results(iprint, istate.nit, maxiter, x, grad, lb, ub, f0, _gtol, True)
+    display_results(
+        istate.nit, maxiter, x, grad, lb, ub, f0, _gtol, True, iprint, logger
+    )
 
     if projgr(x, grad, lb, ub) <= _gtol:
         istate.task_str = "CONVERGENCE: NORM_OF_PROJECTED_GRADIENT_<=_PGTOL"

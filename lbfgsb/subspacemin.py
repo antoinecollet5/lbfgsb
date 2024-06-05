@@ -32,6 +32,7 @@ constrained optimization.
 convex quadratic problems.
 """
 
+import logging
 from typing import Deque, Optional, Tuple
 
 import numpy as np
@@ -46,9 +47,10 @@ def freev(
     x_cp: NDArrayFloat,
     lb: NDArrayFloat,
     ub: NDArrayFloat,
-    iprint: int,
     iter: int,
     free_vars_old: Optional[NDArrayInt] = None,
+    iprint: int = -1,
+    logger: Optional[logging.Logger] = None,
 ) -> Tuple[NDArrayInt, spmatrix, spmatrix]:
     """
     Get the free variables and build sparse Z and A matrices.
@@ -63,10 +65,16 @@ def freev(
         Upper bounds.
     free_vars_old : NDArrayInt
         Free variables at x_cp at the previous iteration.
-    iprint : int
-        Level of display.
     iter : int
         Iteration number.
+    iprint : int, optional
+        Controls the frequency of output. ``iprint < 0`` means no output;
+        ``iprint = 0``    print only one line at the last iteration;
+        ``0 < iprint < 99`` print also f and ``|proj g|`` every iprint iterations;
+        ``iprint >= 99``   print details of every iteration except n-vectors;
+    logger: Optional[Logger], optional
+        :class:`logging.Logger` instance. If None, nothing is displayed, no matter the
+        value of `iprint`, by default None.
 
     Returns
     -------
@@ -103,19 +111,20 @@ def freev(
     # Some display
     # 1) Indicate which variable is leaving the free variables and which is
     # entering the free variables -> Not for the first iteration
-    if iprint > 100 and iter > 0 and free_vars_old is not None:
+    if iprint > 100 and iter > 0 and free_vars_old is not None and logger is not None:
         # Variables leaving the free variables
         leaving_vars = active_vars[np.isin(active_vars, free_vars_old)]
-        print(f"Variables leaving the free variables set = {leaving_vars}")
+        logger.info(f"Variables leaving the free variables set = {leaving_vars}")
         entering_vars = free_vars[~np.isin(free_vars, free_vars_old)]
-        print(f"Variables entering the free variables set = {entering_vars}")
-        print(
+
+        logger.info(f"Variables entering the free variables set = {entering_vars}")
+        logger.info(
             f"N variables leaving = {leaving_vars.size} \t,"
             f" N variables entering = {entering_vars.size}"
         )
     # 2) Display the total of free variables at x_cp
-    if iprint > 99:
-        print(f"{free_vars.size} variables are free at GCP, iter = {iter + 1}")
+    if iprint > 99 and logger is not None:
+        logger.info(f"{free_vars.size} variables are free at GCP, iter = {iter + 1}")
 
     return free_vars, Z.tocsc(), A.tocsc()
 

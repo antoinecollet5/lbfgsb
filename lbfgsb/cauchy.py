@@ -26,7 +26,8 @@ constrained optimization.
 """
 
 import copy
-from typing import Tuple
+import logging
+from typing import Optional, Tuple
 
 import numpy as np
 
@@ -44,8 +45,9 @@ def get_cauchy_point(
     theta: float,
     col: int,
     max_cor: int,
-    iprint: int,
     iter: int,
+    iprint: int,
+    logger: Optional[logging.Logger] = None,
 ):
     r"""
     Computes the generalized Cauchy point (GCP).
@@ -76,10 +78,16 @@ def get_cauchy_point(
         Part of limited memory BFGS Hessian approximation.
     col: int
         The actual number of variable metric corrections stored so far.
-    iprint: int
-        Printing level.
     iter: int
         Current iteration.
+    iprint : int, optional
+        Controls the frequency of output. ``iprint < 0`` means no output;
+        ``iprint = 0``    print only one line at the last iteration;
+        ``0 < iprint < 99`` print also f and ``|proj g|`` every iprint iterations;
+        ``iprint >= 99``   print details of every iteration except n-vectors;
+    logger: Optional[Logger], optional
+        :class:`logging.Logger` instance. If None, nothing is displayed, no matter the
+        value of `iprint`, by default None.
 
     Returns
     -------
@@ -101,8 +109,9 @@ def get_cauchy_point(
       FORTRAN routines for large scale bound constrained optimization (2011),
       ACM Transactions on Mathematical Software, 38, 1.
     """
-    if iprint >= 99:
-        print("---------------- CAUCHY entered-------------------")
+    # Note: the variable names follow the FORTRAN original implementation
+    if iprint >= 99 and logger is not None:
+        logger.info("---------------- CAUCHY entered-------------------")
 
     eps_f_sec = 1e-30
     x_cp = x.copy()
@@ -126,23 +135,28 @@ def get_cauchy_point(
     # Initialization
     # There is a problem with the size of W -> it should be fixed but it is not here....
     # See what is best with python ???
+
     p = W.T @ d  # 2mn operations
+
+    # Initialize c = W'(xcp - x) = 0.
     c = np.zeros(p.size)
-    # f1 in the original code
-    f_prime: float = -d.dot(d)  # n operations
-    # f2 in the original code
-    f_second: float = -theta * f_prime
-    # f2_org in the fortran code
-    f_sec0: float = copy.deepcopy(f_second)
+
+    # Initialize f1
+    f1: float = -d.dot(d)  # n operations
+
+    # Initialize derivative f2.
+    f2: float = -theta * f1
+    f2_org: float = copy.deepcopy(f2)
+
     # Update f2 with - d^{T} @ W @ M @ W^{T} @ d = - p^{T} @ M @ p
-    # old way: f_second = f_second - p.dot(M.dot(p))  # O(m^{2}) operations
+    # old way: f2 = f2 - p.dot(M.dot(p))  # O(m^{2}) operations
     # new_way: not at first iteration -> invMfactors and M are worse zero.
     # And cho_solve produces nan
     if iter != 0:
-        f_second = f_second - p.dot(bmv(invMfactors, p))  # O(m^{2}) operations
+        f2 = f2 - p.dot(bmv(invMfactors, p))  # O(m^{2}) operations
 
     # dtm in the fortran code
-    Dt_min: float = -f_prime / f_second
+    dtm: float = -f1 / f2
 
     # Number of breakpoints
     nbreak = len(F)
@@ -162,95 +176,92 @@ def get_cauchy_point(
     # value of the smallest breakpoint, t in section 4 [1]
     t_min = t[ibp]
     # previous breakpoint value
-    t_old = 0
+    t_old = 0.0
 
-    Dt = t_min - 0
+    dt = t_min - 0.0
 
     # Number of the breakpoint segment -> Nseg in Fortran
     nseg: int = 1  # TODO: check that
 
-    if iprint >= 99:
-        print(f"There are {nbreak} breakpoints ")
+    if iprint >= 99 and logger is not None:
+        logger.info(f"There are {nbreak} breakpoints ")
 
-    if nbreak != 0:
-        pass
+    while dtm >= dt and F_i < len(F):
+        if dt != 0 and iprint >= 100 and logger is not None:
+            logger.info(
+                f"Piece    , {nseg},  --f1, f2 at start point , {f1} , " f"{f2}"
+            )
+            logger.info(f"Distance to the next break point =  {dt}")
+            logger.info(f"Distance to the stationary point =  {dtm}")
 
-        while Dt_min >= Dt and F_i < len(F):
-            if Dt != 0 and iprint >= 100:
-                print(
-                    f"Piece    , {nseg},  --f1, f2 at start point , {f_prime} , "
-                    f"{f_second}"
-                )
-                print(f"Distance to the next break point =  {Dt}")
-                print(f"Distance to the stationary point =  {Dt_min}")
+        # Fix one variable and reset the corresponding component of d to zero.
+        if d[ibp] > 0:
+            x_cp[ibp] = ub[ibp]
+        elif d[ibp] < 0:
+            x_cp[ibp] = lb[ibp]
+        x_bcp = x_cp[ibp]
+        zb = x_bcp - x[ibp]
 
-            # Fix one variable and reset the corresponding component of d to zero.
-            if d[ibp] > 0:
-                x_cp[ibp] = ub[ibp]
-            elif d[ibp] < 0:
-                x_cp[ibp] = lb[ibp]
-            x_bcp = x_cp[ibp]
-            zb = x_bcp - x[ibp]
+        if iprint >= 100 and logger is not None:
+            # ibp +1 to match the Fortran code (because index starts at 1)
+            logger.info(f"Variable  {ibp + 1} is fixed.")
+        F_i += 1
 
-            if iprint >= 100:
-                # ibp +1 to match the Fortran code (because index starts at 1)
-                print(f"Variable  {ibp + 1} is fixed.")
-            F_i += 1
+        c += dt * p
+        W_b = W[ibp, :]
+        g_b = grad[ibp]
 
-            c += Dt * p
-            W_b = W[ibp, :]
-            g_b = grad[ibp]
+        # Update the derivative information
+        # 1) Old way
+        # f1 += dt * f2 + g_b * (g_b + theta * zb - W_b.dot(M.dot(c)))
+        # f2 -= g_b * (g_b * theta + W_b.dot(M.dot(2 * p + g_b * W_b)))
+        # 2) New way with the cholesky factorization
+        f1 += dt * f2 + g_b * (g_b + theta * zb)
+        f2 -= g_b * g_b * theta
 
-            # Update the derivative information
-            # 1) Old way
-            # f_prime += Dt * f_second + g_b * (g_b + theta * zb - W_b.dot(M.dot(c)))
-            # f_second -= g_b * (g_b * theta + W_b.dot(M.dot(2 * p + g_b * W_b)))
-            # 2) New way with the cholesky factorization
-            f_prime += Dt * f_second + g_b * (g_b + theta * zb)
-            f_second -= g_b * (g_b * theta)
-            # First iteration -> invMfactors and M are worse zero.
-            # And cho_solve produces nan
-            if iter != 0:
-                f_prime -= g_b * W_b.dot(bmv(invMfactors, c))
-                f_second -= g_b * W_b.dot(bmv(invMfactors, (2 * p + g_b * W_b)))
+        # First iteration -> invMfactors and M are worse zero.
+        # And cho_solve produces nan
+        if iter != 0:
+            f1 += g_b * W_b.dot(bmv(invMfactors, c))
+            f2 += g_b * W_b.dot(bmv(invMfactors, (2 * p + g_b * W_b)))
 
-            f_second = min(f_second, eps_f_sec * f_sec0)
+        f2 = max(f2, eps_f_sec * f2_org)
+        dtm = -f1 / f2
 
-            Dt_min = -f_prime / f_second
+        # Fix one variable and reset the corresponding component of d to zero.
+        p += g_b * W_b
+        d[ibp] = 0
+        t_old = t_min
 
-            # Fix one variable and reset the corresponding component of d to zero.
-            p += g_b * W_b
-            d[ibp] = 0
-            t_old = t_min
+        if F_i < len(F):
+            ibp = F[F_i]
+            t_min = t[ibp]
+            dt = t_min - t_old
+        else:
+            t_min = np.inf
 
-            if F_i < len(F):
-                ibp = F[F_i]
-                t_min = t[ibp]
-                Dt = t_min - t_old
-            else:
-                t_min = np.inf
+        nseg += 1
 
-            nseg += 1
+    if iprint >= 99 and logger is not None:
+        logger.info("GCP found in this segment")
 
-    if iprint >= 99:
-        print("GCP found in this segment")
+        # print(f"Piece    {nseg}  --f1, f2 at start point , {f1} , {f2}")
+        # print(f"Distance to the stationary point = {dt}")
 
-        # print(f"Piece    {nseg}  --f1, f2 at start point , {f_prime} , {f_second}")
-        # print(f"Distance to the stationary point = {Dt}")
-
-    Dt_min = 0 if Dt_min < 0 else Dt_min
-    t_old += Dt_min
+    dtm = 0 if dtm < 0 else dtm
+    t_old += dtm
 
     x_cp[t >= t_min] = (x + t_old * d)[t >= t_min]
 
     F = [i for i in F if t[i] != t_min]
 
-    c += Dt_min * p
+    c += dtm * p
 
-    if iprint > 100:
-        print(f"Cauchy X =  {x_cp}")
-    if iprint >= 99:
-        print("---------------- exit CAUCHY----------------------")
+    if logger is not None:
+        if iprint > 100:
+            logging.info(f"Cauchy X =  {x_cp}")
+        if iprint >= 99:
+            logging.info("---------------- exit CAUCHY----------------------")
 
     return {
         "xc": x_cp,

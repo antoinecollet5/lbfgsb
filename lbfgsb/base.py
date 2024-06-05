@@ -19,6 +19,7 @@ Functions
 
 """
 
+import logging
 from typing import Optional, Tuple
 
 import numpy as np
@@ -121,7 +122,14 @@ def count_var_at_bounds(x: NDArrayFloat, lb: NDArrayFloat, ub: NDArrayFloat) -> 
     return (x.T[x.T == ub]).size + (x.T[x.T == lb]).size
 
 
-def display_start(epsmch, n: int, m: int, nvar_at_b: int, iprint: int) -> None:
+def display_start(
+    epsmch,
+    n: int,
+    m: int,
+    nvar_at_b: int,
+    iprint: int,
+    logger: Optional[logging.Logger] = None,
+) -> None:
     """
     Display information at solver start.
 
@@ -135,18 +143,30 @@ def display_start(epsmch, n: int, m: int, nvar_at_b: int, iprint: int) -> None:
         Number of updates.
     nvar_at_b : int
         Number of variables at bounds.
+    iprint : int, optional
+        Controls the frequency of output. ``iprint < 0`` means no output;
+        ``iprint = 0``    print only one line at the last iteration;
+        ``0 < iprint < 99`` print also f and ``|proj g|`` every iprint iterations;
+        ``iprint >= 99``   print details of every iteration except n-vectors;
+    logger: Optional[Logger], optional
+        :class:`logging.Logger` instance. If None, nothing is displayed, no matter the
+        value of `iprint`, by default None.
+
     """
-    if iprint < 0:
+    if iprint < 0 and logger is None:
         return
-    print("RUNNING THE L-BFGS-B CODE")
-    print("           * * *")
-    print(f"Machine precision = {epsmch}")
-    print(f"N = \t{n}\tM = \t{m}")
-    print(f"At X0, {nvar_at_b} variables are exactly at the bounds")
+    logger.info("RUNNING THE L-BFGS-B CODE")
+    logger.info("           * * *")
+    logger.info(f"Machine precision = {epsmch}")
+    logger.info(f"N = \t{n}\tM = \t{m}")
+    logger.info(f"At X0, {nvar_at_b} variables are exactly at the bounds")
 
 
 def projgr(
-    x: NDArrayFloat, grad: NDArrayFloat, lb: NDArrayFloat, ub: NDArrayFloat
+    x: NDArrayFloat,
+    grad: NDArrayFloat,
+    lb: NDArrayFloat,
+    ub: NDArrayFloat,
 ) -> float:
     """
     Computes the infinity norm of the projected gradient.
@@ -195,7 +215,13 @@ def projgr_ens(
     return np.array([projgr(_x, _g, lb, ub) for (_x, _g) in zip(x.T, grad.T)])
 
 
-def display_iter(iter: int, sbgnrm: float, f: float, iprint: int) -> None:
+def display_iter(
+    iter: int,
+    sbgnrm: float,
+    f: float,
+    iprint: int,
+    logger: Optional[logging.Logger] = None,
+) -> None:
     """
     Compute the infinity norm of the (-) projected gradient.
 
@@ -207,14 +233,27 @@ def display_iter(iter: int, sbgnrm: float, f: float, iprint: int) -> None:
         Infinity norm of the (-) projected gradient.
     iter: int
         Current iteration.
-    iprint: int
-        Level of display.
+    iprint : int, optional
+        Controls the frequency of output. ``iprint < 0`` means no output;
+        ``iprint = 0``    print only one line at the last iteration;
+        ``0 < iprint < 99`` print also f and ``|proj g|`` every iprint iterations;
+        ``iprint >= 99``   print details of every iteration except n-vectors;
+    logger: Optional[Logger], optional
+        :class:`logging.Logger` instance. If None, nothing is displayed, no matter the
+        value of `iprint`, by default None.
+
     """
-    if iprint > 1:
-        print(f"At iterate {iter} , f= {f} , |proj g|= {sbgnrm}")
+    if iprint > 1 and logger is not None:
+        logger.info(f"At iterate {iter} , f= {f} , |proj g|= {sbgnrm}")
 
 
-def display_iter_ensemble(iter: int, sbgnrm: float, f: float, iprint: int) -> None:
+def display_iter_ensemble(
+    iter: int,
+    sbgnrm: float,
+    f: float,
+    iprint: int,
+    logger: Optional[logging.Logger] = None,
+) -> None:
     """
     Compute the infinity norm of the (-) projected gradient.
 
@@ -226,15 +265,21 @@ def display_iter_ensemble(iter: int, sbgnrm: float, f: float, iprint: int) -> No
         Infinity norm of the (-) projected gradient.
     iter: int
         Current iteration.
-    iprint: int
-        Level of display.
+    iprint : int, optional
+        Controls the frequency of output. ``iprint < 0`` means no output;
+        ``iprint = 0``    print only one line at the last iteration;
+        ``0 < iprint < 99`` print also f and ``|proj g|`` every iprint iterations;
+        ``iprint >= 99``   print details of every iteration except n-vectors;
+    logger: Optional[Logger], optional
+        :class:`logging.Logger` instance. If None, nothing is displayed, no matter the
+        value of `iprint`, by default None.
+
     """
-    if iprint > 1:
-        print(f"At iterate {iter} , min(f)= {f} , min(|proj g|)= {sbgnrm}")
+    if iprint > 1 and logger is not None:
+        logger.info(f"At iterate {iter} , min(f)= {f} , min(|proj g|)= {sbgnrm}")
 
 
 def display_results(
-    iprint: int,
     n_iterations: int,
     max_iter,
     x: NDArrayFloat,
@@ -244,17 +289,14 @@ def display_results(
     f0: float,
     gtol: float,
     is_final_display: bool,
+    iprint: int,
+    logger: Optional[logging.Logger] = None,
 ) -> None:
     r"""
     Disaply the optimization results on the fly.
 
     Parameters
     ----------
-    iprint : int, optional
-        Controls the frequency of output. ``iprint < 0`` means no output;
-        ``iprint = 0``    print only one line at the last iteration;
-        ``0 < iprint < 99`` print also f and ``|proj g|`` every iprint iterations;
-        ``iprint >= 99``   print details of every iteration except n-vectors;
     n_iterations : int
         _description_
     max_iter : _type_
@@ -273,6 +315,15 @@ def display_results(
         Relative tolerance on gradient.
     is_final_display: bool
         Is it the final display, after convergence or stop.
+    iprint : int, optional
+        Controls the frequency of output. ``iprint < 0`` means no output;
+        ``iprint = 0``    print only one line at the last iteration;
+        ``0 < iprint < 99`` print also f and ``|proj g|`` every iprint iterations;
+        ``iprint >= 99``   print details of every iteration except n-vectors;
+    logger: Optional[Logger], optional
+        :class:`logging.Logger` instance. If None, nothing is displayed, no matter the
+        value of `iprint`, by default None.
+
     """
     if iprint is None:
         return
@@ -282,7 +333,9 @@ def display_results(
         return
     if iprint < 99 and n_iterations % iprint != 0:
         return
-    print(
+    if logger is None:
+        return
+    logger.info(
         "Iteration #%d (max: %d): ||x||=%.3e, f(x)=%.3e, ||jac(x)||=%.3e, "
         "cdt_arret=%.3e (eps=%.3e)"
         % (

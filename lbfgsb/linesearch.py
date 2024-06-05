@@ -21,6 +21,8 @@ Reference:
 sufficient decrease.
 """
 
+import logging
+import warnings
 from typing import Callable, Optional, Tuple
 
 import numpy as np
@@ -99,6 +101,7 @@ def line_search(
     xtol: float = 1e-1,
     max_iter: int = 30,
     iprint: int = 10,
+    logger: Optional[logging.Logger] = None,
     isave: NDArrayFloat = np.zeros((2,), np.intc),
     dsave: NDArrayFloat = np.zeros((13,), np.float64),
 ) -> Optional[float]:
@@ -182,7 +185,15 @@ def line_search(
         In the fortran implementation algo 778, it is hardcoded to 0.1.
         The default is 1e-5.
     max_iter : int, optional
-        Maximum number of linesearch iterations, by default 30.
+            Maximum number of linesearch iterations, by default 30.
+    iprint : int, optional
+        Controls the frequency of output. ``iprint < 0`` means no output;
+        ``iprint = 0``    print only one line at the last iteration;
+        ``0 < iprint < 99`` print also f and ``|proj g|`` every iprint iterations;
+        ``iprint >= 99``   print details of every iteration except n-vectors;
+    logger: Optional[Logger], optional
+        :class:`logging.Logger` instance. If None, nothing is displayed, no matter the
+        value of `iprint`, by default None.
 
     Returns
     -------
@@ -249,10 +260,13 @@ def line_search(
 
     if task[:5] == b"ERROR" or task[:4] == b"WARN":
         if task[:21] != b"WARNING: STP = STPMAX":
-            print(task)
+            warnings.warn(task)
             steplength = None  # failed
 
-    if iprint >= 99:
-        print(f"LINE SEARCH  {iter} times; norm of step = {steplength}")
+    if iprint >= 99 and logger is not None:
+        logger.info(
+            f"LINE SEARCH  {iter} times; norm of step = "
+            f"{steplength * np.linalg.norm(d)}"
+        )
 
     return steplength
