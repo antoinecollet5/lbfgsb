@@ -32,7 +32,53 @@ from typing import Optional, Tuple
 import numpy as np
 
 from lbfgsb.bfgsmats import bmv
-from lbfgsb.types import NDArrayFloat
+from lbfgsb.types import NDArrayFloat, NDArrayInt
+
+
+def display_start_point(
+    nseg: int,
+    f_prime: float,
+    f_second: float,
+    delta_t: Optional[float],
+    delta_t_min: float,
+    iprint: int,
+    logger: Optional[logging.Logger],
+) -> None:
+    """
+    Display the start point status.
+
+    Parameters
+    ----------
+    nseg : int
+        Number of explored segment.
+    f_prime : float
+        First derivative.
+    f_second : float
+        Second derivative.
+    delta_t : float
+        See Algorithm CP: Computation of the generalized Cauchy point in [1].
+    delta_t_min : float
+        See Algorithm CP: Computation of the generalized Cauchy point in [1].
+    iprint : int, optional
+        Controls the frequency of output. ``iprint < 0`` means no output;
+        ``iprint = 0``    print only one line at the last iteration;
+        ``0 < iprint < 99`` print also f and ``|proj g|`` every iprint iterations;
+        ``iprint >= 99``   print details of every iteration except n-vectors;
+    logger: Optional[Logger], optional
+        :class:`logging.Logger` instance. If None, nothing is displayed, no matter the
+        value of `iprint`, by default None.
+
+    """
+    if iprint < 100:
+        return
+    if logger is None:
+        return
+    logger.info(
+        f"Piece    , {nseg},  --f1, f2 at start point , {f_prime} , " f"{f_second}"
+    )
+    if delta_t is not None:
+        logger.info(f"Distance to the next break point =  {delta_t}")
+    logger.info(f"Distance to the stationary point =  {delta_t_min}")
 
 
 def get_cauchy_point(
@@ -43,12 +89,10 @@ def get_cauchy_point(
     W: NDArrayFloat,
     invMfactors: Tuple[NDArrayFloat, NDArrayFloat],
     theta: float,
-    col: int,
-    max_cor: int,
     iter: int,
     iprint: int,
     logger: Optional[logging.Logger] = None,
-):
+) -> Tuple[NDArrayFloat, NDArrayFloat]:
     r"""
     Computes the generalized Cauchy point (GCP).
 
@@ -76,8 +120,6 @@ def get_cauchy_point(
         Part of limited memory BFGS Hessian approximation
     theta : float
         Part of limited memory BFGS Hessian approximation.
-    col: int
-        The actual number of variable metric corrections stored so far.
     iter: int
         Current iteration.
     iprint : int, optional
@@ -91,11 +133,8 @@ def get_cauchy_point(
 
     Returns
     -------
-    Dict
-        Dict containing a computed value of:
-        - 'xc' the GCP
-        - 'c' = W^(T)(xc-x), used for the subspace minimization
-        - 'F' set of free variables
+    Tuple[NDArrayFloat, NDArrayFloat]
+        The array of Cauchy points and c = W @ (Zc - Zk).
 
     References
     ----------
@@ -114,10 +153,10 @@ def get_cauchy_point(
         logger.info("---------------- CAUCHY entered-------------------")
 
     eps_f_sec = 1e-30
-    x_cp = x.copy()
+    x_cp: NDArrayFloat = x.copy()
 
     # To define the breakpoints in each coordinate direction, we compute
-    t = np.where(grad < 0, (x - ub) / grad, (x - lb) / grad)
+    t: NDArrayFloat = np.where(grad < 0, (x - ub) / grad, (x - lb) / grad)
     t[grad == 0] = np.inf
 
     # used to store the Cauchy direction `P(x-tg)-x`.
@@ -127,10 +166,7 @@ def get_cauchy_point(
     # sort {t;,i = 1,. ..,n} in increasing order to obtain the ordered
     # set {tj :tj <= tj+1 ,j = 1, ...,n}.
     # Keep only the indices where t > 0
-    F = np.argsort(t)[t > 0]
-
-    # TODO: The integer t denotes the number of free variables at the Cauchy point zc;
-    # in other words there are n - t variables at bound at zC
+    sorted_t_idx: NDArrayInt = np.argsort(t)[t > 0]
 
     # Initialization
     # There is a problem with the size of W -> it should be fixed but it is not here....
@@ -139,132 +175,129 @@ def get_cauchy_point(
     p = W.T @ d  # 2mn operations
 
     # Initialize c = W'(xcp - x) = 0.
-    c = np.zeros(p.size)
+    c: NDArrayFloat = np.zeros(p.size)
 
     # Initialize f1
-    f1: float = -d.dot(d)  # n operations
+    f_prime: float = -d.dot(d)  # n operations
 
     # Initialize derivative f2.
-    f2: float = -theta * f1
-    f2_org: float = copy.deepcopy(f2)
+    f_second: float = -theta * f_prime
+    f2_org: float = copy.deepcopy(f_second)
 
     # Update f2 with - d^{T} @ W @ M @ W^{T} @ d = - p^{T} @ M @ p
     # old way: f2 = f2 - p.dot(M.dot(p))  # O(m^{2}) operations
     # new_way: not at first iteration -> invMfactors and M are worse zero.
     # And cho_solve produces nan
     if iter != 0:
-        f2 = f2 - p.dot(bmv(invMfactors, p))  # O(m^{2}) operations
+        f_second = f_second - p.dot(bmv(invMfactors, p))  # O(m^{2}) operations
 
     # dtm in the fortran code
-    dtm: float = -f1 / f2
+    delta_t_min: float = -f_prime / f_second
 
     # Number of breakpoints
-    nbreak = len(F)
+    nbreak = len(sorted_t_idx)
     # Handler the case where there are no breakpoints
     if nbreak == 0:
         # is a zero vector, return with the initial xcp as GCP.
-        return {
-            "xc": x_cp,
-            "c": c,
-            "F": F,
-        }
+        return x_cp, c
 
-    # iter in the fortran code
-    F_i = 0
+    # iter in the fortran code and b in [1]
+    _i = 0
     # break point index (b in section 4 [1])
-    ibp = F[F_i]  # TODO: remove b from F ???
+    ibp: int = sorted_t_idx[_i]
     # value of the smallest breakpoint, t in section 4 [1]
-    t_min = t[ibp]
+    t_cur: float = t[ibp]
     # previous breakpoint value
     t_old = 0.0
 
-    dt = t_min - 0.0
+    delta_t: float = t_cur - 0.0
 
     # Number of the breakpoint segment -> Nseg in Fortran
-    nseg: int = 1  # TODO: check that
+    nseg: int = 1
 
     if iprint >= 99 and logger is not None:
         logger.info(f"There are {nbreak} breakpoints ")
 
-    while dtm >= dt and F_i < len(F):
-        if dt != 0 and iprint >= 100 and logger is not None:
-            logger.info(
-                f"Piece    , {nseg},  --f1, f2 at start point , {f1} , " f"{f2}"
-            )
-            logger.info(f"Distance to the next break point =  {dt}")
-            logger.info(f"Distance to the stationary point =  {dtm}")
+    # flag
+    is_gpc_found = False
+
+    while _i < len(sorted_t_idx):
+        display_start_point(
+            nseg, f_prime, f_second, delta_t, delta_t_min, iprint, logger
+        )
+
+        if delta_t_min < delta_t:
+            is_gpc_found = True
+            break
 
         # Fix one variable and reset the corresponding component of d to zero.
         if d[ibp] > 0:
             x_cp[ibp] = ub[ibp]
         elif d[ibp] < 0:
             x_cp[ibp] = lb[ibp]
-        x_bcp = x_cp[ibp]
-        zb = x_bcp - x[ibp]
+        zb = x_cp[ibp] - x[ibp]
 
         if iprint >= 100 and logger is not None:
             # ibp +1 to match the Fortran code (because index starts at 1)
             logger.info(f"Variable  {ibp + 1} is fixed.")
-        F_i += 1
 
-        c += dt * p
+        c += delta_t * p
         W_b = W[ibp, :]
         g_b = grad[ibp]
 
         # Update the derivative information
         # 1) Old way
-        # f1 += dt * f2 + g_b * (g_b + theta * zb - W_b.dot(M.dot(c)))
+        # f1 += delta_t * f2 + g_b * (g_b + theta * zb - W_b.dot(M.dot(c)))
         # f2 -= g_b * (g_b * theta + W_b.dot(M.dot(2 * p + g_b * W_b)))
         # 2) New way with the cholesky factorization
-        f1 += dt * f2 + g_b * (g_b + theta * zb)
-        f2 -= g_b * g_b * theta
+        f_prime += delta_t * f_second + g_b * (g_b + theta * zb)
+        f_second -= g_b * g_b * theta
 
         # First iteration -> invMfactors and M are worse zero.
         # And cho_solve produces nan
         if iter != 0:
-            f1 += g_b * W_b.dot(bmv(invMfactors, c))
-            f2 += g_b * W_b.dot(bmv(invMfactors, (2 * p + g_b * W_b)))
+            f_prime -= g_b * W_b.dot(bmv(invMfactors, c))
+            f_second -= g_b * W_b.dot(bmv(invMfactors, (2 * p + g_b * W_b)))
 
-        f2 = max(f2, eps_f_sec * f2_org)
-        dtm = -f1 / f2
+        # this is a trick of the original FORTRAN code that prevents very low
+        # values of f2
+        f_second = max(f_second, eps_f_sec * f2_org)
 
         # Fix one variable and reset the corresponding component of d to zero.
         p += g_b * W_b
         d[ibp] = 0
-        t_old = t_min
+        delta_t_min = -f_prime / f_second
+        t_old = copy.copy(t_cur)
 
-        if F_i < len(F):
-            ibp = F[F_i]
-            t_min = t[ibp]
-            dt = t_min - t_old
-        else:
-            t_min = np.inf
+        _i += 1
+        try:
+            ibp = sorted_t_idx[_i]
+            t_cur = t[ibp]
+        except IndexError:
+            # to ensure that delta_t > delta_t_min and break the while
+            t_cur = np.inf
 
+        delta_t = t_cur - t_old
         nseg += 1
 
     if iprint >= 99 and logger is not None:
-        logger.info("GCP found in this segment")
+        if is_gpc_found:
+            logger.info("GCP found in this segment")
+            display_start_point(
+                nseg, f_prime, f_second, None, delta_t_min, iprint, logger
+            )
 
-        # print(f"Piece    {nseg}  --f1, f2 at start point , {f1} , {f2}")
-        # print(f"Distance to the stationary point = {dt}")
+    delta_t_min = 0 if delta_t_min < 0 else delta_t_min
+    t_old += delta_t_min
 
-    dtm = 0 if dtm < 0 else dtm
-    t_old += dtm
+    x_cp[t >= t_cur] = (x + t_old * d)[t >= t_cur]
 
-    x_cp[t >= t_min] = (x + t_old * d)[t >= t_min]
-
-    F = [i for i in F if t[i] != t_min]
-
-    c += dtm * p
+    c += delta_t_min * p
 
     if logger is not None:
         if iprint > 100:
-            logging.info(f"Cauchy X =  {x_cp}")
+            logger.info(f"Cauchy X =  {x_cp}")
         if iprint >= 99:
-            logging.info("---------------- exit CAUCHY----------------------")
+            logger.info("---------------- exit CAUCHY----------------------")
 
-    return {
-        "xc": x_cp,
-        "c": c,
-        "F": F,
-    }
+    return x_cp, c

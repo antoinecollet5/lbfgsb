@@ -413,8 +413,7 @@ def minimize_lbfgsb(
         grad.copy()
 
         # find cauchy point
-        # TODO: replace dictCP by a class
-        dictCP = get_cauchy_point(
+        x_cp, c = get_cauchy_point(
             x,
             grad,
             lb,
@@ -422,28 +421,24 @@ def minimize_lbfgsb(
             W,
             invMfactors,
             theta,
-            len(X),
-            maxcor,
             istate.nit,
             iprint,
             logger,
         )
 
         # Get the free variables for the GCP
-        free_vars, Z, A = freev(
-            dictCP["xc"], lb, ub, istate.nit, free_vars, iprint, logger
-        )
+        free_vars, Z, A = freev(x_cp, lb, ub, istate.nit, free_vars, iprint, logger)
 
         # subspace minimization: find the search direction for the minimization problem
         xbar: NDArrayFloat = direct_primal_subspace_minimization(
             X,
             G,
             x,
-            dictCP["xc"],
+            x_cp,
             free_vars,
             Z,
             A,
-            dictCP["c"],
+            c,
             grad,
             lb,
             ub,
