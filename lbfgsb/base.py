@@ -343,15 +343,15 @@ def display_results(
         value of `iprint`, by default None.
 
     """
-    if iprint is None:
+    if iprint is None or logger is None:
         return
     if iprint < 0:
         return
     if iprint == 0 and not is_final_display:
         return
-    if iprint < 99 and n_iterations % iprint != 0:
-        return
-    if logger is None:
+    elif iprint == 0:
+        pass
+    elif iprint < 99 and n_iterations % iprint != 0:
         return
     logger.info(
         "Iteration #%d (max: %d): ||x||=%.3e, f(x)=%.3e, ||jac(x)||=%.3e, "
