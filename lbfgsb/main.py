@@ -320,7 +320,6 @@ def minimize_lbfgsb(
 
     # search direction for the minimization problem
     W: NDArrayFloat = np.zeros([n, 1])
-    M: NDArrayFloat = np.zeros([1, 1])
     invMfactors: Tuple[NDArrayFloat, NDArrayFloat] = (
         np.zeros([1, 1]),
         np.zeros([1, 1]),
@@ -417,7 +416,6 @@ def minimize_lbfgsb(
             lb,
             ub,
             W,
-            M,
             invMfactors,
             theta,
             len(X),
@@ -481,7 +479,6 @@ def minimize_lbfgsb(
                 X.clear()
                 G.clear()
                 W = np.zeros([n, 1])
-                M = np.zeros([1, 1])
                 theta = 1
         else:
             # x update
@@ -516,14 +513,13 @@ def minimize_lbfgsb(
             if is_f0_target_reached(f0, _ftarget, istate):
                 break
 
-            W, M, invMfactors, theta = update_lbfgs_matrices(
+            W, invMfactors, theta = update_lbfgs_matrices(
                 x.copy(),  # copy otherwise x might be changed in X when updated
                 grad,
                 X,
                 G,
                 maxcor,
                 W.copy(),
-                M.copy(),
                 invMfactors,
                 copy.copy(theta),
                 False,

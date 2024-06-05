@@ -40,7 +40,6 @@ def get_cauchy_point(
     lb: NDArrayFloat,
     ub: NDArrayFloat,
     W: NDArrayFloat,
-    M: NDArrayFloat,
     invMfactors: Tuple[NDArrayFloat, NDArrayFloat],
     theta: float,
     col: int,
@@ -72,8 +71,6 @@ def get_cauchy_point(
     ub : NDArrayFloat
         Upper bound vector.
     W : NDArrayFloat
-        Part of limited memory BFGS Hessian approximation
-    M : NDArrayFloat
         Part of limited memory BFGS Hessian approximation
     theta : float
         Part of limited memory BFGS Hessian approximation.

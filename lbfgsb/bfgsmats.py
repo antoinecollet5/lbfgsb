@@ -117,12 +117,11 @@ def update_lbfgs_matrices(
     G: Deque[NDArrayFloat],
     maxcor: int,
     W: NDArrayFloat,
-    M: NDArrayFloat,
     invMfactors: Tuple[NDArrayFloat, NDArrayFloat],
     theta: float,
     is_force_update: bool,
     eps: float = 2.2e-16,
-) -> Tuple[NDArrayFloat, NDArrayFloat, Tuple[NDArrayFloat, NDArrayFloat], float]:
+) -> Tuple[NDArrayFloat, Tuple[NDArrayFloat, NDArrayFloat], float]:
     r"""
     Update lists S and Y, and form the L-BFGS Hessian approximation thet, W and M.
 
@@ -149,8 +148,6 @@ def update_lbfgs_matrices(
         in an approximation to it.)
     W : NDArrayFloat
         L-BFGS matrices.
-    M : NDArrayFloat
-        L-BFGS matrices.
     thet : float
         L-BFGS float parameter (multiply the identity matrix).
     is_force_update: bool
@@ -163,7 +160,7 @@ def update_lbfgs_matrices(
 
     Returns
     -------
-    Tuple[NDArrayFloat, NDArrayFloat, Tuple[NDArrayFloat, NDArrayFloat], float]
+    Tuple[NDArrayFloat, Tuple[NDArrayFloat, NDArrayFloat], float]
         Updated [W, M, invMfactors, theta]
 
     References
@@ -191,8 +188,17 @@ def update_lbfgs_matrices(
 
     # two conditions to update the inverse Hessian approximation
     if is_force_update or is_current_update_accepted:
+        # yk and sk: These correction pairs contain information about the curvature of
+        # the
+        # function and, in conjunction with the BFGS formula, define the limited-memory
+        # iteration matrix Bk. The question is how to best represent these matrices
+        # without explicitly forming them. In [6] it is proposed to use a compact
+        # (or outer product) form to define the limited-memory matrix Bk in terms of
+        # the n x m correction matrices
+
         # 1) Update theta
         yk = G[-1] - G[-2]
+        # sk = X[-1] - X[-2]
         sTy = (X[-1] - X[-2]).dot(yk)  # type: ignore
         yTy = (yk).dot(yk)  # type: ignore
         theta = yTy / sTy
@@ -206,6 +212,7 @@ def update_lbfgs_matrices(
         D = np.diag(np.diag(L))
         L = np.tril(L, -1)
 
+        # W = [Yk, \theta Sk]
         W = np.hstack([Yarray, theta * Sarray])
 
         # To avoid forming the limited-memory iteration matrix Bk and allow fast
@@ -213,19 +220,20 @@ def update_lbfgs_matrices(
         # B = theta * I  - W @ M @ W.T
 
         # M (or Mk) can be obtained with
-        M = np.linalg.inv(
-            np.hstack([np.vstack([-D, L]), np.vstack([L.T, theta * STS])])
-        )
+        # M = np.linalg.inv(
+        #     np.hstack([np.vstack([-D, L]), np.vstack([L.T, theta * STS])])
+        # )
         # However, we can also factorize its inverse and obtain very fast matrix
         # products: lower triangle of M inverse
         invMfactors = form_invMfactors(theta, STS, L, D)
 
+        # Test the factorization on the fly.
         np.testing.assert_allclose(
             invMfactors[0] @ invMfactors[1],
             np.hstack([np.vstack([-D, L]), np.vstack([L.T, theta * STS])]),
         )
 
-    return W, M, invMfactors, theta
+    return W, invMfactors, theta
 
 
 def update_X_and_G(
