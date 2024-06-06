@@ -64,6 +64,57 @@ def ackley_grad(x: NDArrayFloat) -> NDArrayFloat:
     ) - 2.0 * np.pi / ndim * np.sin(2.0 * np.pi * x)
 
 
+def beale(x: NDArrayFloat) -> float:
+    """
+    The Beale function.
+
+    Parameters
+    ----------
+    x : array_like
+        1-D array of points at which the Beale function is to be computed.
+
+    Returns
+    -------
+    float
+        The value of the Griewank function.
+
+    """
+    x = np.asarray(x)
+    return (
+        (1.5 - x[:-1] + x[:-1] * x[1:]) ** 2
+        + (2.25 - x[:-1] + x[:-1] * x[1:] ** 2) ** 2
+        + (2.625 - x[:-1] + x[:-1] * x[1:] ** 3) ** 2
+    ).sum()
+
+
+def beale_grad(x: NDArrayFloat) -> NDArrayFloat:
+    """
+    The gradient of the Quartic function.
+
+    Parameters
+    ----------
+    x : array_like
+        1-D array of points at which the Beale function is to be derivated.
+
+    Returns
+    -------
+    NDArrayFloat
+        The gradient of the Beale function.
+
+    """
+    x = np.asarray(x)
+    y1 = x[1:]
+    y2 = y1 * y1
+    y3 = y2 * y1
+    f1 = 1.5 - x[:-1] + x[:-1] * y1
+    f2 = 2.25 - x[:-1] + x[:-1] * y2
+    f3 = 2.625 - x[:-1] + x[:-1] * y3
+    grad = np.zeros_like(x)
+    grad[:-1] += 2 * (y1 - 1) * f1 + 2 * (y2 - 1) * f2 + 2 * (y3 - 1) * f3
+    grad[1:] += 2 * x[:-1] * f1 + 4 * x[:-1] * y1 * f2 + 6 * x[:-1] * y2 * f3
+    return grad
+
+
 def griewank(x: NDArrayFloat) -> float:
     """
     The Griewank function.

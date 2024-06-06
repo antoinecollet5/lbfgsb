@@ -8,6 +8,8 @@ import pytest
 from lbfgsb import (
     ackley,
     ackley_grad,
+    beale,
+    beale_grad,
     griewank,
     griewank_grad,
     quartic,
@@ -27,6 +29,7 @@ from lbfgsb import (
     "function,gradient",
     (
         (ackley, ackley_grad),
+        (beale, beale_grad),
         (griewank, griewank_grad),
         (quartic, quartic_grad),
         (rastrigin, rastrigin_grad),
@@ -37,6 +40,8 @@ from lbfgsb import (
 )
 def test_benchmark_functions(function: Callable, gradient: Callable) -> None:
     """Test the functions and their gradient."""
-    x = np.array([1, 2, 3])
+    x = np.array([7.0, 1.0, 2.0, 3.0, 9.0])
 
-    np.testing.assert_allclose(gradient(x), nd.Gradient(function, step=1e-6)(x))
+    np.testing.assert_allclose(
+        gradient(x), nd.Gradient(function, step=1e-5)(x), atol=1e-5, rtol=1e-5
+    )

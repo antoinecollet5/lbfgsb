@@ -43,6 +43,8 @@ Provide the following function and their gradients to benchmark our implementati
 
     ackley
     ackley_grad
+    beale
+    beale_grad
     griewank
     griewank_grad
     quartic
@@ -91,6 +93,8 @@ from lbfgsb.__about__ import __author__, __email__, __version__
 from lbfgsb.benchmarks import (
     ackley,
     ackley_grad,
+    beale,
+    beale_grad,
     griewank,
     griewank_grad,
     quartic,
@@ -115,6 +119,8 @@ __all__ = [
     "__version__",
     "ackley",
     "ackley_grad",
+    "beale",
+    "beale_grad",
     "griewank",
     "griewank_grad",
     "quartic",
