@@ -35,6 +35,93 @@ the code core.
 * Free software: MIT license
 * Documentation: https://lbfgsb.readthedocs.io.
 
+Quick start
+-----------
+
+Given an optimization problem defined by an objective function and a feasible space:
+
+.. code-block:: python
+
+   import numpy as np
+   from lbfgsb.types import NDArrayFloat  # for type hints, numpy array of floats
+
+    def rosenbrock(x: NDArrayFloat) -> float:
+        """
+        The Rosenbrock function.
+
+        Parameters
+        ----------
+        x : array_like
+            1-D array of points at which the Rosenbrock function is to be computed.
+
+        Returns
+        -------
+        float
+            The value of the Rosenbrock function.
+
+        """
+        x = np.asarray(x)
+        sum1 = ((x[1:] - x[:-1] ** 2.0) ** 2.0).sum()
+        sum2 = np.square(1.0 - x[:-1]).sum()
+        return 100.0 * sum1 + sum2
+
+
+    def rosenbrock_grad(x: NDArrayFloat) -> NDArrayFloat:
+        """
+        The gradient of the Rosenbrock function.
+
+        Parameters
+        ----------
+        x : array_like
+            1-D array of points at which the Rosenbrock function is to be derivated.
+
+        Returns
+        -------
+        NDArrayFloat
+            The gradient of the Rosenbrock function.
+        """
+        x = np.asarray(x)
+        g = np.zeros(x.size)
+        # derivation of sum1
+        g[1:] += 100.0 * (2.0 * x[1:] - 2.0 * x[:-1] ** 2.0)
+        g[:-1] += 100.0 * (-4.0 * x[1:] * x[:-1] + 4.0 * x[:-1] ** 3.0)
+        # derivation of sum2
+        g[:-1] += 2.0 * (x[:-1] - 1.0)
+        return g
+
+   lb = np.array([-2, -2])  # lower bounds
+   ub = np.array([2, 2])  # upper bounds
+   bounds = np.array((l, u)).T  # The number of variables to optimize is len(bounds)
+   x0 = np.array([-0.8, -1])  # The initial guess
+
+The optimal solution can be found following:
+
+.. code-block:: python
+
+   from lbfgsb import minimize_lbfgsb
+
+   x = minimize_lbfgsb(
+     x0=x0, fun=rosenbrock, jac=rosenbrock_grad, bounds=bounds, ftol=1e-5, gtol=1e-5
+   )
+
+``minimize_lbfgsb`` returns an `OptimalResult` instance (from scipy) that contains the results of the optimization:
+
+.. code-block::
+
+    message: CONVERGENCE: REL_REDUCTION_OF_F_<=_FTOL
+    success: True
+     status: 0
+        fun: 3.9912062309350614e-08
+          x: [ 1.000e+00  1.000e+00]
+        nit: 18
+        jac: [-6.576e-02  3.220e-02]
+       nfev: 23
+       njev: 23
+   hess_inv: <2x2 LbfgsInvHessProduct with dtype=float64>
+
+See all use cases in the tutorials section of the `documentation <https://lbfgsb.readthedocs.io/en/latest/usage.html>`_.
+
+
 .. |License| image:: https://img.shields.io/badge/License-MIT license-blue.svg
     :target: https://github.com/antoinecollet5/lbfgsb/-/blob/master/LICENSE
 
