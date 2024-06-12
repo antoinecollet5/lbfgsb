@@ -31,7 +31,7 @@ from typing import Optional, Tuple
 
 import numpy as np
 
-from lbfgsb.bfgsmats import bmv
+from lbfgsb.bfgsmats import LBFGSB_MATRICES, bmv
 from lbfgsb.types import NDArrayFloat, NDArrayInt
 
 
@@ -86,9 +86,7 @@ def get_cauchy_point(
     grad: NDArrayFloat,
     lb: NDArrayFloat,
     ub: NDArrayFloat,
-    W: NDArrayFloat,
-    invMfactors: Tuple[NDArrayFloat, NDArrayFloat],
-    theta: float,
+    mats: LBFGSB_MATRICES,
     iter: int,
     iprint: int,
     logger: Optional[logging.Logger] = None,
@@ -116,10 +114,8 @@ def get_cauchy_point(
         Lower bound vector.
     ub : NDArrayFloat
         Upper bound vector.
-    W : NDArrayFloat
-        Part of limited memory BFGS Hessian approximation
-    theta : float
-        Part of limited memory BFGS Hessian approximation.
+    mats: LBFGSB_MATRICES
+        TODO.
     iter: int
         Current iteration.
     iprint : int, optional
@@ -169,10 +165,7 @@ def get_cauchy_point(
     sorted_t_idx: NDArrayInt = np.argsort(t)[t > 0]
 
     # Initialization
-    # There is a problem with the size of W -> it should be fixed but it is not here....
-    # See what is best with python ???
-
-    p = W.T @ d  # 2mn operations
+    p = mats.W.T @ d  # 2mn operations
 
     # Initialize c = W'(xcp - x) = 0.
     c: NDArrayFloat = np.zeros(p.size)
@@ -181,15 +174,15 @@ def get_cauchy_point(
     f_prime: float = -d.dot(d)  # n operations
 
     # Initialize derivative f2.
-    f_second: float = -theta * f_prime
+    f_second: float = -mats.theta * f_prime
     f2_org: float = copy.deepcopy(f_second)
 
     # Update f2 with - d^{T} @ W @ M @ W^{T} @ d = - p^{T} @ M @ p
     # old way: f2 = f2 - p.dot(M.dot(p))  # O(m^{2}) operations
     # new_way: not at first iteration -> invMfactors and M are worse zero.
-    # And cho_solve produces nan
+    # And cho_solve produces nan so we use bmv
     if iter != 0:
-        f_second = f_second - p.dot(bmv(invMfactors, p))  # O(m^{2}) operations
+        f_second = f_second - p.dot(bmv(mats.invMfactors, p))  # O(m^{2}) operations
 
     # dtm in the fortran code
     delta_t_min: float = -f_prime / f_second
@@ -242,7 +235,7 @@ def get_cauchy_point(
             logger.info(f"Variable  {ibp + 1} is fixed.")
 
         c += delta_t * p
-        W_b = W[ibp, :]
+        W_b = mats.W[ibp, :]
         g_b = grad[ibp]
 
         # Update the derivative information
@@ -250,14 +243,14 @@ def get_cauchy_point(
         # f1 += delta_t * f2 + g_b * (g_b + theta * zb - W_b.dot(M.dot(c)))
         # f2 -= g_b * (g_b * theta + W_b.dot(M.dot(2 * p + g_b * W_b)))
         # 2) New way with the cholesky factorization
-        f_prime += delta_t * f_second + g_b * (g_b + theta * zb)
-        f_second -= g_b * g_b * theta
+        f_prime += delta_t * f_second + g_b * (g_b + mats.theta * zb)
+        f_second -= g_b * g_b * mats.theta
 
         # First iteration -> invMfactors and M are worse zero.
         # And cho_solve produces nan
         if iter != 0:
-            f_prime -= g_b * W_b.dot(bmv(invMfactors, c))
-            f_second -= g_b * W_b.dot(bmv(invMfactors, (2 * p + g_b * W_b)))
+            f_prime -= g_b * W_b.dot(bmv(mats.invMfactors, c))
+            f_second -= g_b * W_b.dot(bmv(mats.invMfactors, (2 * p + g_b * W_b)))
 
         # this is a trick of the original FORTRAN code that prevents very low
         # values of f2

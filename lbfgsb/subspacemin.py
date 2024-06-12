@@ -19,11 +19,11 @@ Functions
 .. autosummary::
    :toctree: _autosummary
 
-    freev
-    form_k_from_xgza
+    get_freev
     form_k_from_wm
-    formk
-    direct_primal_subspace_minimization
+    form_k_from_za
+    factorize_k
+    subspace_minimization
 
 Reference:
 [1] R. H. Byrd, P. Lu, and J. Nocedal (1995). A limited memory algorithm for bound
@@ -33,17 +33,17 @@ convex quadratic problems.
 """
 
 import logging
-from typing import Deque, Optional, Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 import scipy as sp
 from scipy.sparse import lil_matrix, spmatrix
 
-from lbfgsb.bfgsmats import bmv
+from lbfgsb.bfgsmats import LBFGSB_MATRICES, bmv
 from lbfgsb.types import NDArrayFloat, NDArrayInt
 
 
-def freev(
+def get_freev(
     x_cp: NDArrayFloat,
     lb: NDArrayFloat,
     ub: NDArrayFloat,
@@ -129,58 +129,63 @@ def freev(
     return free_vars, Z.tocsc(), A.tocsc()
 
 
-def form_k_from_xgza(
-    X: Deque[NDArrayFloat],
-    G: Deque[NDArrayFloat],
+def form_k(
     Z: spmatrix,
     A: spmatrix,
-    theta: float,
+    WTZ: NDArrayFloat,
+    mats: LBFGSB_MATRICES,
+    is_assert_correct: bool = True,
 ) -> NDArrayFloat:
-    """
+    """ """
+    # Construct K = M^{-1}(I - 1/theta M WT Z @ ZT @ W))
+    K = form_k_from_za(Z, A, mats)
+    if is_assert_correct:
+        K_wm = form_k_from_wm(WTZ, mats.invMfactors, mats.theta)
+        np.testing.assert_allclose(K, K_wm, atol=1e-8)
+    return K
+
+
+def form_k_from_za(
+    Z: spmatrix,
+    A: spmatrix,
+    mats: LBFGSB_MATRICES,
+    logger: Optional[logging.Logger] = None,
+) -> NDArrayFloat:
+    r"""
     Form the matrix K.
 
-    The matrix K is defined by:
+    The matrix K is defined by
 
-    K = [-D -Y'ZZ'Y/theta     L_a'-R_z'  ]
-        [L_a -R_z           theta*S'AA'S ]
+    .. math::
+        \mathbf{M}^{-1} \mathbf{K} = \left(\mathbf{I} - \dfrac{1}{\theta}
+            \mathbf{MW}^{\mathrm{T}}
+            \mathbf{ZZ}^{\mathrm{T}}\mathbf{W}\right)  =
+            \begin{bmatrix} -\mathbf{D} - \dfrac{1}{\theta} \mathbf{Y}^{\mathrm{T}}
+            \mathbf{ZZ}^{\mathrm{T}}\mathbf{Y} & \mathbf{L}_A^{\mathrm{T}}
+            - \mathbf{R}_Z^{\mathrm{T}} \\ \mathbf{L}_A - \mathbf{R}_Z & \theta
+            \mathbf{S}^{\mathrm{T}}\mathbf{AA}^{\mathrm{T}}\mathbf{S} \end{bmatrix}
 
     Parameters
     ----------
     """
-    # This was the old approach that did not work:
-    # form S and Y
-    S = np.diff(np.array(X), axis=0).T
-    Y = np.diff(np.array(G), axis=0).T
-    D: NDArrayFloat = np.diag(np.diag(S.T @ Y))
-
-    # 1) RZ is the upper triangular part of S'ZZ'Y.
-    if Z.size == 0:
-        YTZZTY = np.zeros((Y.shape[1], Y.shape[1]))
-        RZ = YTZZTY.copy()
+    if Z.shape[0] == 0:
+        YTZZTY = np.zeros((mats.Y.shape[1], mats.Y.shape[1]))
+        STZZTY = np.zeros((mats.Y.shape[1], mats.Y.shape[1]))
     else:
-        YTZZTY = Y.T @ Z @ Z.T @ Y
-        print(YTZZTY)
-        RZ = sp.linalg.cholesky(
-            YTZZTY, lower=False, overwrite_a=False
-        )  # np.triu(YTZZTY)
-
-    # 2) LA is the strict lower triangle of S^{T}AA^{T}S
-    if A.size == 0:
-        STAATS = np.zeros((S.shape[1], S.shape[1]))
-        LA = STAATS.copy()
+        YTZZTY = mats.Y.T @ Z @ Z.T @ mats.Y
+        STZZTY = mats.S.T @ Z @ Z.T @ mats.Y
+    if A.shape[0] == 0:
+        STAATS = np.zeros((mats.S.shape[1], mats.S.shape[1]))
     else:
-        STAATS = S.T @ A @ A.T @ S
-        LA = sp.linalg.cholesky(
-            STAATS, lower=True, overwrite_a=False
-        )  # np.tril(STAATS, -1)
+        STAATS = mats.S.T @ A @ A.T @ mats.S
 
-    m = LA.shape[0]
+    m = mats.L.shape[0]
     K = np.zeros((m * 2, m * 2))
 
-    K[:m, :m] = -D - (1 / theta) * YTZZTY
-    K[:m, m:] = (LA - RZ).T
-    K[m:, :m] = LA - RZ
-    K[m:, m:] = theta * STAATS
+    K[:m, :m] = -mats.D - (1 / mats.theta) * YTZZTY
+    K[:m, m:] = (mats.L - STZZTY).T
+    K[m:, :m] = mats.L - STZZTY
+    K[m:, m:] = mats.theta * STAATS
 
     return K
 
@@ -190,10 +195,16 @@ def form_k_from_wm(
     invMfactors: Tuple[NDArrayFloat, NDArrayFloat],
     theta: float,
 ) -> NDArrayFloat:
-    """
+    r"""
     Form the matrix K.
 
-    The matrix K is defined as M^{-1}(I - 1/theta M WT Z @ ZT @ W)).
+    The matrix K is defined as
+
+    .. math::
+
+        mathbf{K} = \mathbf{M}^{-1} \left(\mathbf{I} -
+        \dfrac{1}{\theta} \mathbf{MW}^{\mathrm{T}}
+        \mathbf{ZZ}^{\mathrm{T}}\mathbf{W}\right)
 
     Parameters
     ----------
@@ -216,20 +227,12 @@ def form_k_from_wm(
     return K @ N
 
 
-def formk(
-    X: Deque[NDArrayFloat],
-    G: Deque[NDArrayFloat],
-    Z: spmatrix,
-    A: spmatrix,
-    WTZ: NDArrayFloat,
-    invMfactors: Tuple[NDArrayFloat, NDArrayFloat],
-    theta: float,
+def factorize_k(
+    K: NDArrayFloat,
     is_assert_correct: bool = True,
 ) -> Optional[NDArrayFloat]:
     """
-    Form mk.
-
-    Form  the LEL^T factorization of the indefinite matrix
+    Return the L with LEL^T factorization of the indefinite matrix K.
 
     K = [-D -Y'ZZ'Y/theta     L_a'-R_z'  ]
         [L_a -R_z           theta*S'AA'S ]
@@ -263,28 +266,16 @@ def formk(
     Optional[NDArrayFloat]
         _description_
     """
-    K = form_k_from_wm(WTZ, invMfactors, theta)
-
-    # TODO: K2 is not exactly equal to what it should
-    # We don't understand why for now...
-    # K2 = form_k_from_xgza(X, G, Z, A, theta)
-    # np.testing.assert_allclose(K, K2, atol=1e-8)
-    # print(f"K = {K}")
-    # print(f"K2 = {K2}")
-
     # The factorization only makes sense if K is at least (2, 2).
     if K.size < 4:
-        return None
+        assert K.size == 1
+        return np.sqrt(K)
 
+    # Extract the subblocks of K with K12 = K21.T (K is symmetric)
     m = int(K.shape[0] / 2)
     K11 = -K[:m, :m]
     K12 = -K[:m, m:]
     K22 = K[m:, m:]
-
-    # print(f"K.shape = {K.shape}")
-    # print(f"K11.shape = {K11.shape}")
-    # print(f"K12.shape = {K12.shape}")
-    # print(f"K22.shape = {K22.shape}")
 
     # Form L, the lower part of LL' = D+Y' ZZ'Y/theta
     L11 = sp.linalg.cholesky(K11, lower=True, overwrite_a=False)
@@ -295,27 +286,18 @@ def formk(
     # Form L22 from S'AA'S*theta + (L^-1(-L_a'+R_z'))'L^-1(-L_a'+R_z')
     L22 = sp.linalg.cholesky(K22 + L12.T @ L12, lower=True)
 
-    # K is a lower triangle matrix
+    # LK is a lower triangle of the matrix factorization LK @ E @ LK.T
     LK = np.hstack([np.vstack([L11, L12.T]), np.vstack([np.zeros(L12.shape), L22])])
 
-    # Test the factorization # TODO: create a specific function
+    # Test the factorization
     if is_assert_correct:
-        K2 = np.hstack([np.vstack([-K11, -K12.T]), np.vstack([-K12, K22])])
-        E = np.identity(n=K2.shape[0])
-        E[: int(E.shape[0] / 2), : int(E.shape[0] / 2)] *= -1
-        # print(f"K11 = {K11}")
-        # print(f"K = {K}")
-        # print(f"E = {E}")
-        # print(f"LK = {LK}")
-        np.testing.assert_allclose(LK @ E @ LK.T, K2, atol=1e-8)
+        E = np.identity(n=2 * m)
+        E[:m, :m] *= -1
         np.testing.assert_allclose(LK @ E @ LK.T, K, atol=1e-8)
     return LK
 
 
-# There are three methods for this one and we need to find the correct one.
-def direct_primal_subspace_minimization(
-    X,
-    G,
+def subspace_minimization(
     x: NDArrayFloat,
     xc: NDArrayFloat,
     free_vars: NDArrayInt,
@@ -325,9 +307,7 @@ def direct_primal_subspace_minimization(
     grad: NDArrayFloat,
     lb: NDArrayFloat,
     ub: NDArrayFloat,
-    W: NDArrayFloat,
-    invMfactors: Tuple[NDArrayFloat, NDArrayFloat],
-    theta: float,
+    mats: LBFGSB_MATRICES,
     n_iterations: int,
 ) -> NDArrayFloat:
     r"""
@@ -336,16 +316,14 @@ def direct_primal_subspace_minimization(
     This is following section 5.1 in Byrd et al. (1995).
 
     .. math::
-        :nowrap:
 
-       \[\begin{aligned}
+        \begin{aligned}
             \min& &\langle r, (x-xcp)\rangle + 1/2 \langle x-xcp, B (x-xcp)\rangle\\
             \text{s.t.}& &l<=x<=u\\
                        & & x_i=xcp_i \text{for all} i \in A(xcp)
-        \]
+        \end{aligned}
 
-    along the subspace unconstrained Newton direction
-    .. math:: $d = -(Z'BZ)^(-1) r.$
+    along the subspace unconstrained Newton direction :math:`d = -(Z'BZ)^(-1) r`.
 
     Parameters
     ----------
@@ -361,12 +339,8 @@ def direct_primal_subspace_minimization(
         Lower bound vector.
     ub : NDArrayFloat
         Upper bound vector.
-    W : NDArrayFloat
-        Part of limited memory BFGS Hessian approximation.
-    M : NDArrayFloat
-        Part of limited memory BFGS Hessian approximation.
-    theta : float
-        Part of limited memory BFGS Hessian approximation.
+    mats: LBFGSB_MATRICES
+        TODO.
     Z: spmatrix
         Warning: it has shape (n, t)
 
@@ -389,7 +363,7 @@ def direct_primal_subspace_minimization(
     """
     # Direct primal method
 
-    invThet = 1.0 / theta
+    invThet = 1.0 / mats.theta
 
     # d = (1/theta)r + (1/theta*2) Z'WK^(-1)W'Z r.
 
@@ -401,20 +375,22 @@ def direct_primal_subspace_minimization(
     # sparse matrix
     # Note that here, Z is suppose to have a shape (t, n) with t the number
     # of free_vars and n the number of variables.
-    # WTZ = W.T.dot(Z.todense())
-    WTZ = Z.T.dot(W).T
+    # WTZ = W.T.dot(Z.todense()) works but this is much less efficient
+    WTZ = Z.T.dot(mats.W).T
 
-    r = grad + theta * (xc - x)
+    r = grad + mats.theta * (xc - x)
     # At iter 0, M is [[0.0]] and so is invMfactors
     if n_iterations != 0:
-        r -= W.dot(bmv(invMfactors, c))
+        r -= mats.W.dot(bmv(mats.invMfactors, c))
 
     rHat = [r[ind] for ind in free_vars]
     v = WTZ.dot(rHat)
 
     # Factorization of M^{-1}(I - 1/theta M WT Z @ ZT @ W))
     if n_iterations != 0:
-        LK: Optional[NDArrayFloat] = formk(X, G, Z, A, WTZ, invMfactors, theta)
+        K = form_k(Z, A, WTZ, mats)
+        # The assertion includes minor overhead
+        LK: Optional[NDArrayFloat] = factorize_k(K, is_assert_correct=True)
     else:
         LK = None
 
@@ -425,11 +401,13 @@ def direct_primal_subspace_minimization(
         v[: int(LK.shape[0] / 2)] *= -1
         v = sp.linalg.solve_triangular(LK.T, v, lower=False)
     else:
+        # This is less efficient but it should only happen if LK is None, i.e., at
+        # iteration 0
         if n_iterations != 0:
-            v = bmv(invMfactors, v)
-            N = -bmv(invMfactors, invThet * WTZ.dot(np.transpose(WTZ)))
+            v = bmv(mats.invMfactors, v)
+            N = -bmv(mats.invMfactors, invThet * WTZ.dot(np.transpose(WTZ)))
         else:
-            M = invMfactors[0] @ invMfactors[1]
+            M = mats.invMfactors[0] @ mats.invMfactors[1]
             v = M.dot(v)
             N = -M.dot(invThet * WTZ.dot(np.transpose(WTZ)))
         # Add the identity matrix: this is the same as N = np.eye(N.shape[0]) - M.dot(N)

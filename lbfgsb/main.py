@@ -56,11 +56,11 @@ from lbfgsb.base import (
     is_any_inf,
     projgr,
 )
-from lbfgsb.bfgsmats import update_lbfgs_matrices
+from lbfgsb.bfgsmats import LBFGSB_MATRICES, update_lbfgs_matrices
 from lbfgsb.cauchy import get_cauchy_point
 from lbfgsb.linesearch import line_search
 from lbfgsb.scalar_function import ScalarFunction, prepare_scalar_function
-from lbfgsb.subspacemin import direct_primal_subspace_minimization, freev
+from lbfgsb.subspacemin import get_freev, subspace_minimization
 from lbfgsb.types import NDArrayFloat
 
 
@@ -321,13 +321,8 @@ def minimize_lbfgsb(
     X: Deque[NDArrayFloat] = deque()
     G: Deque[NDArrayFloat] = deque()
 
-    # search direction for the minimization problem
-    W: NDArrayFloat = np.zeros([n, 1])
-    invMfactors: Tuple[NDArrayFloat, NDArrayFloat] = (
-        np.zeros([1, 1]),
-        np.zeros([1, 1]),
-    )
-    theta = 1
+    # Initialization of the matrices
+    mats = LBFGSB_MATRICES(n)
 
     # wrapper storing the calls to f and g and handling finite difference approximation
     sf: ScalarFunction = prepare_scalar_function(
@@ -418,21 +413,17 @@ def minimize_lbfgsb(
             grad,
             lb,
             ub,
-            W,
-            invMfactors,
-            theta,
+            mats,
             istate.nit,
             iprint,
             logger,
         )
 
         # Get the free variables for the GCP
-        free_vars, Z, A = freev(x_cp, lb, ub, istate.nit, free_vars, iprint, logger)
+        free_vars, Z, A = get_freev(x_cp, lb, ub, istate.nit, free_vars, iprint, logger)
 
         # subspace minimization: find the search direction for the minimization problem
-        xbar: NDArrayFloat = direct_primal_subspace_minimization(
-            X,
-            G,
+        xbar: NDArrayFloat = subspace_minimization(
             x,
             x_cp,
             free_vars,
@@ -442,9 +433,7 @@ def minimize_lbfgsb(
             grad,
             lb,
             ub,
-            W,
-            invMfactors,
-            theta,
+            mats,
             istate.nit,
         )
         d = xbar - x
@@ -467,21 +456,20 @@ def minimize_lbfgsb(
             iprint,
             logger,
         )
-
         if steplength is None:
-            if len(X) == 0:
+            if len(X) == 1:
                 # Hessian already rebooted: abort.
-                istate.task_str = "Error: cannot compute new steplength : abort"
-                f0, grad = sf.fun_and_grad(x)
+                istate.task_str = "ABNORMAL_TERMINATION_IN_LNSRCH"
                 istate.warnflag = 2
                 istate.is_success = False
-                break
+                break  # leave the while and finish the program.
             else:
-                # Reboot BFGS-Hessian:
-                X.clear()
-                G.clear()
-                W = np.zeros([n, 1])
-                theta = 1
+                istate.task_str = "RESTART_FROM_LNSRCH"
+                # Keep only the last correction
+                X = Deque(X[-1])
+                G = Deque(G[-1])
+                # Reboot BFGS-Hessian
+                mats = LBFGSB_MATRICES(n)
         else:
             # x update
             x += steplength * d
@@ -515,15 +503,13 @@ def minimize_lbfgsb(
             if is_f0_target_reached(f0, _ftarget, istate):
                 break
 
-            W, invMfactors, theta = update_lbfgs_matrices(
+            mats = update_lbfgs_matrices(
                 x.copy(),  # copy otherwise x might be changed in X when updated
                 grad,
                 X,
                 G,
                 maxcor,
-                W.copy(),
-                invMfactors,
-                copy.copy(theta),
+                mats,
                 False,
                 eps_SY,
             )
@@ -544,7 +530,8 @@ def minimize_lbfgsb(
                         x=x,
                         success=istate.is_success,
                         hess_inv=LbfgsInvHessProduct(
-                            np.diff(np.array(X), axis=0), np.diff(np.array(G), axis=0)
+                            np.atleast_2d(np.diff(np.array(X), axis=0)),
+                            np.atleast_2d(np.diff(np.array(G), axis=0)),
                         ),
                     ),
                 ):
@@ -580,7 +567,6 @@ def minimize_lbfgsb(
         istate.warnflag = 1
 
     # error: b'ERROR: STPMAX .LT. STPMIN'
-
     return OptimizeResult(
         fun=f0,
         jac=grad,
@@ -592,7 +578,8 @@ def minimize_lbfgsb(
         x=x,
         success=istate.is_success,
         hess_inv=LbfgsInvHessProduct(
-            np.diff(np.array(X), axis=0), np.diff(np.array(G), axis=0)
+            np.atleast_2d(np.diff(np.array(X), axis=0)),
+            np.atleast_2d(np.diff(np.array(G), axis=0)),
         ),
     )
 

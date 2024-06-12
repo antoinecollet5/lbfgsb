@@ -4,6 +4,14 @@ An *implicit* representation of the BFGS approximation to the Hessian matrix B
 B = theta * I - W * M * W'
 H = inv(B)
 
+Classes
+^^^^^^^
+
+.. autosummary::
+   :toctree: _autosummary
+
+    LBFGSB_MATRICES
+
 Functions
 ^^^^^^^^^
 
@@ -16,10 +24,9 @@ Functions
     update_X_and_G
 
 Reference:
-[1] D. C. Liu and J. Nocedal (1989). On the limited memory BFGS method for large scale
-optimization.
-[2] R. H. Byrd, P. Lu, and J. Nocedal (1995). A limited memory algorithm for bound
-constrained optimization.
+:cite:`nocedalUpdatingQuasiNewtonMatrices1980`
+:cite:`byrdRepresentationsQuasiNewtonMatrices1994`
+:cite:`byrdLimitedMemoryAlgorithm1995`
 """
 
 from typing import Deque, Tuple
@@ -28,6 +35,52 @@ import numpy as np
 import scipy as sp
 
 from lbfgsb.types import NDArrayFloat
+
+
+class LBFGSB_MATRICES:
+    """
+    Represent the L-BFGS matrices.
+
+    Attributes
+    ----------
+    S : NDArrayFloat
+        # shape (n, m)
+    Y : NDArrayFloat
+        # shape (n, m)
+    D : NDArrayFloat
+        # shape (m, m)
+    L : NDArrayFloat
+        # shape (m, m)
+    W : NDArrayFloat
+        # shape (m, 2m)
+    invMfactors: Tuple[NDArrayFloat, NDArrayFloat]
+        # shape (2m, 2m)
+    theta : float
+        L-BFGS float parameter (multiply the identity matrix).
+    TODO.
+    """
+
+    __slots__ = ["S", "Y", "D", "L", "W", "invMfactors", "theta"]
+
+    def __init__(self, n: int) -> None:
+        """
+        Initialize the instance.
+
+        Parameters
+        ----------
+        n : int
+            Number of adjuted variables.
+        """
+        self.S: NDArrayFloat = np.zeros([n, 1])
+        self.Y: NDArrayFloat = np.zeros([n, 1])
+        self.D: NDArrayFloat = np.zeros([n, 1])
+        self.L: NDArrayFloat = np.zeros([n, 1])
+        self.W: NDArrayFloat = np.zeros([n, 1])
+        self.invMfactors: Tuple[NDArrayFloat, NDArrayFloat] = (
+            np.zeros([1, 1]),
+            np.zeros([1, 1]),
+        )
+        self.theta: float = 1.0
 
 
 def bmv(
@@ -69,13 +122,18 @@ def form_invMfactors(theta, STS, L, D) -> Tuple[NDArrayFloat, NDArrayFloat]:
 
     This is defined in eq. (3.4) [1].
 
-    Although Mk is not positive definite, but its inverse reads.
+    Although Mk is not positive definite, but its inverse reads
 
-    [-D  L'          ]
-    [L   theta * S'*S]
+    .. math::
+
+        \mathbf{M}^{-1} = \begin{bmatrix} -\mathbf{D} & \mathbf{L}^{\mathrm{T}} \\
+        \mathbf{L} & \theta \mathbf{S}^{\mathrm{T}}\mathbf{S} \end{bmatrix}
+
+
+    as given in (3.4) of [1].
 
     Hence its inverse can be factorized almost `symmetrically` by using Cholesky
-    factorizations of the submatrices TODO: add ref to the phd manuscript.
+    factorizations of the submatrices.
     Now, the inverse of Mk, the middle matrix in B reads:
 
     [  D^(1/2)      O ] [ -D^(1/2)  D^(-1/2)*L' ]
@@ -116,12 +174,10 @@ def update_lbfgs_matrices(
     X: Deque[NDArrayFloat],
     G: Deque[NDArrayFloat],
     maxcor: int,
-    W: NDArrayFloat,
-    invMfactors: Tuple[NDArrayFloat, NDArrayFloat],
-    theta: float,
+    mats: LBFGSB_MATRICES,
     is_force_update: bool,
     eps: float = 2.2e-16,
-) -> Tuple[NDArrayFloat, Tuple[NDArrayFloat, NDArrayFloat], float]:
+) -> LBFGSB_MATRICES:
     r"""
     Update lists S and Y, and form the L-BFGS Hessian approximation thet, W and M.
 
@@ -146,10 +202,6 @@ def update_lbfgs_matrices(
         define the limited memory matrix. (The limited memory BFGS
         method does not store the full hessian but uses this many terms
         in an approximation to it.)
-    W : NDArrayFloat
-        L-BFGS matrices.
-    thet : float
-        L-BFGS float parameter (multiply the identity matrix).
     is_force_update: bool
         Whether to perform an update even if the current step update is rejected.
         This is useful if the sequence of X and G has been modified during the
@@ -201,19 +253,19 @@ def update_lbfgs_matrices(
         # sk = X[-1] - X[-2]
         sTy = (X[-1] - X[-2]).dot(yk)  # type: ignore
         yTy = (yk).dot(yk)  # type: ignore
-        theta = yTy / sTy
+        mats.theta = yTy / sTy
 
         # Update the lbfgsb matrices
-        Sarray = np.diff(np.array(X), axis=0).T  # shape (n, m - 1)
-        Yarray = np.diff(np.array(G), axis=0).T  # shape (n ,m - 1)
-        STS = Sarray.T @ Sarray
-        L = Sarray.T @ Yarray
+        mats.S = np.diff(np.array(X), axis=0).T  # shape (n, m)
+        mats.Y = np.diff(np.array(G), axis=0).T  # shape (n ,m)
+        STS = mats.S.T @ mats.S  # shape (m, m)
+        mats.L = mats.S.T @ mats.Y
         # We can build a dense matrix because shape is (m, m) with m usually small ~10
-        D = np.diag(np.diag(L))
-        L = np.tril(L, -1)
+        mats.D = np.diag(np.diag(mats.L))  # shape (m, m)
+        mats.L = np.tril(mats.L, -1)  # shape (m, m)
 
         # W = [Yk, \theta Sk]
-        W = np.hstack([Yarray, theta * Sarray])
+        mats.W = np.hstack([mats.Y, mats.theta * mats.S])  # shape (n, 2m)
 
         # To avoid forming the limited-memory iteration matrix Bk and allow fast
         # matrix vector products, we represent it as eq. (3.2) [1].
@@ -225,15 +277,17 @@ def update_lbfgs_matrices(
         # )
         # However, we can also factorize its inverse and obtain very fast matrix
         # products: lower triangle of M inverse
-        invMfactors = form_invMfactors(theta, STS, L, D)
+        mats.invMfactors = form_invMfactors(mats.theta, STS, mats.L, mats.D)
 
         # Test the factorization on the fly.
         np.testing.assert_allclose(
-            invMfactors[0] @ invMfactors[1],
-            np.hstack([np.vstack([-D, L]), np.vstack([L.T, theta * STS])]),
+            mats.invMfactors[0] @ mats.invMfactors[1],
+            np.hstack(
+                [np.vstack([-mats.D, mats.L]), np.vstack([mats.L.T, mats.theta * STS])]
+            ),
         )
 
-    return W, invMfactors, theta
+    return mats
 
 
 def update_X_and_G(
@@ -279,7 +333,9 @@ def update_X_and_G(
     if sTy > eps * yTy:
         X.append(xk)
         G.append(gk)
-        if len(X) > maxcor:
+        # maxcor is the number of corrections m (see S and Y shapes),
+        # so we must keep one more gradient and parameter vectors.
+        if len(X) > maxcor + 1:
             X.popleft()
             G.popleft()
         return True

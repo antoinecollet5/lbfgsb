@@ -260,10 +260,10 @@ def line_search(
 
     if task[:5] == b"ERROR" or task[:4] == b"WARN":
         if task[:21] != b"WARNING: STP = STPMAX":
-            warnings.warn(task)
+            warnings.warn(task.decode("utf-8"))
             steplength = None  # failed
 
-    if iprint >= 99 and logger is not None:
+    if iprint >= 99 and logger is not None and steplength is not None:
         logger.info(
             f"LINE SEARCH  {iter} times; norm of step = "
             f"{steplength * np.linalg.norm(d)}"

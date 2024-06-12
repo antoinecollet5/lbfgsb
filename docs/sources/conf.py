@@ -66,7 +66,7 @@ extensions = [
     "sphinx.ext.viewcode",  # Add links to highlighted source code
     "sphinx.ext.intersphinx",  # Link to other projects’ documentation
     "sphinx.ext.autosectionlabel",  # Allow reference sections using its title
-    # 'sphinx.ext.mathjax',
+    "sphinx.ext.mathjax",
     "nbsphinx",  # provides a source parser for *.ipynb files.
     # allows you to include Jupyter notebooks that sit outside your sphinx
     # source directory in your documentation.
