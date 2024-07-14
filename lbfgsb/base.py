@@ -55,18 +55,18 @@ def get_bounds(
         _description_
     """
     n = x0.shape[0]
+    if n == 0:
+        raise ValueError("x0 cannot be an empty vector!")
     if bounds is None:
         bounds = np.repeat(np.array([(-np.inf, np.inf)]), n, axis=0)
     if len(bounds) != n:
-        raise ValueError("length of x0 != length of bounds")
+        raise ValueError("Length of x0 != length of bounds")
 
     lb, ub = old_bound_to_new(bounds)
 
     # check bounds
     if (lb > ub).any():
-        raise ValueError(
-            "LBFGSB - one of the lower bounds is greater than an upper bound."
-        )
+        raise ValueError("One of the lower bounds is greater than an upper bound.")
 
     # initial vector must lie within the bounds. Otherwise ScalarFunction and
     # approx_derivative will cause problems
@@ -137,7 +137,7 @@ def count_var_at_bounds(x: NDArrayFloat, lb: NDArrayFloat, ub: NDArrayFloat) -> 
     int
         Number of variables exactly at the bounds.
     """
-    return (x.T[x.T == ub]).size + (x.T[x.T == lb]).size
+    return np.count_nonzero(np.logical_or(x >= ub, x <= lb))
 
 
 def display_start(
@@ -208,44 +208,19 @@ def projgr(
     return np.max(np.abs(np.clip(x - grad, lb, ub) - x))
 
 
-def projgr_ens(
-    x: NDArrayFloat, grad: NDArrayFloat, lb: NDArrayFloat, ub: NDArrayFloat
-) -> NDArrayFloat:
-    """
-    Computes the minimal infinity norm of the projected gradient of the ensemble
-
-    Parameters
-    ----------
-    x : NDArrayFloat
-        _description_
-    g : NDArrayFloat
-        _description_
-    lb : NDArrayFloat
-        _description_
-    ub : NDArrayFloat
-        _description_
-
-    Returns
-    -------
-    NDArrayFloat
-        Infinity norm of the projected gradient
-    """
-    return np.array([projgr(_x, _g, lb, ub) for (_x, _g) in zip(x.T, grad.T)])
-
-
 def display_iter(
-    iter: int,
+    niter: int,
     sbgnrm: float,
     f: float,
     iprint: int,
     logger: Optional[logging.Logger] = None,
 ) -> None:
     """
-    Compute the infinity norm of the (-) projected gradient.
+    Display the objective function and the projected gradient for the iteration.
 
     Parameters
     ----------
-    iter: int
+    niter: int
         Current iteration number (0 to n).
     sbgnrm: float
         Infinity norm of the (-) projected gradient.
@@ -262,39 +237,7 @@ def display_iter(
 
     """
     if iprint > 1 and logger is not None:
-        logger.info(f"At iterate {iter} , f= {f} , |proj g|= {sbgnrm}")
-
-
-def display_iter_ensemble(
-    iter: int,
-    sbgnrm: float,
-    f: float,
-    iprint: int,
-    logger: Optional[logging.Logger] = None,
-) -> None:
-    """
-    Compute the infinity norm of the (-) projected gradient.
-
-    Parameters
-    ----------
-    iter: int
-        Current iteration number (0 to n).
-    sbgnrm: float
-        Infinity norm of the (-) projected gradient.
-    iter: int
-        Current iteration.
-    iprint : int, optional
-        Controls the frequency of output. ``iprint < 0`` means no output;
-        ``iprint = 0``    print only one line at the last iteration;
-        ``0 < iprint < 99`` print also f and ``|proj g|`` every iprint iterations;
-        ``iprint >= 99``   print details of every iteration except n-vectors;
-    logger: Optional[Logger], optional
-        :class:`logging.Logger` instance. If None, nothing is displayed, no matter the
-        value of `iprint`, by default None.
-
-    """
-    if iprint > 1 and logger is not None:
-        logger.info(f"At iterate {iter} , min(f)= {f} , min(|proj g|)= {sbgnrm}")
+        logger.info(f"At iterate {niter} , f= {f} , |proj g|= {sbgnrm}")
 
 
 def display_results(
@@ -354,15 +297,11 @@ def display_results(
     elif iprint < 99 and n_iterations % iprint != 0:
         return
     logger.info(
-        "Iteration #%d (max: %d): ||x||=%.3e, f(x)=%.3e, ||jac(x)||=%.3e, "
-        "cdt_arret=%.3e (eps=%.3e)"
-        % (
-            n_iterations,
-            max_iter,
-            np.linalg.norm(x, np.inf),
-            f0,
-            np.linalg.norm(grad, np.inf),
-            projgr(x, grad, lb, ub),
-            gtol,
-        )
+        f"Iteration #{n_iterations:d} "
+        f"(max: {max_iter:d}): "
+        f"||x||={np.linalg.norm(x, np.inf):.3e}, "
+        f"f(x)={f0:.3e}, "
+        f"||jac(x)||={np.linalg.norm(grad, np.inf):.3e}, "
+        f"cdt_arret={projgr(x, grad, lb, ub):.3e} "
+        f"(eps={gtol:.3e})"
     )
