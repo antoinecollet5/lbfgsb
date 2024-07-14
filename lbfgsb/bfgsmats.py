@@ -227,16 +227,8 @@ def update_lbfgs_matrices(
       FORTRAN routines for large scale bound constrained optimization (2011),
       ACM Transactions on Mathematical Software, 38, 1.
     """
-    if xk.ndim == 2:
-        # Case of an ensemble (xk and gk)
-        is_current_update_accepted = False
-        # TODO: Can we do a bit better than a for loop ?
-        for i, _x in enumerate(xk.T):
-            if update_X_and_G(_x, gk[:, i], X, G, maxcor, eps):
-                is_current_update_accepted = True
-    else:
-        # Case of a vector
-        is_current_update_accepted: bool = update_X_and_G(xk, gk, X, G, maxcor, eps)
+    # Case of a vector
+    is_current_update_accepted: bool = update_X_and_G(xk, gk, X, G, maxcor, eps)
 
     # two conditions to update the inverse Hessian approximation
     if is_force_update or is_current_update_accepted:
