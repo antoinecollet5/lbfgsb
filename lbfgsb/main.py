@@ -411,16 +411,25 @@ def minimize_lbfgsb(
     sbgnrm = projgr(x, grad, lb, ub)
     display_iter(istate.nit, sbgnrm, f0, iprint, logger=logger)
 
+    # bool indicating if results of the current iteration have been displayed. It
+    # avoid duplicates for the last round.
+    has_displayed_results = False
+
     # Note that interruptions due to maxfun are postponed
     # until the completion of the current minimization iteration.
-    while projgr(x, grad, lb, ub) > _gtol and istate.nit < maxiter and sf.nfev < maxfun:
+    while (
+        projgr(x, grad, lb, ub) > _gtol
+        and istate.nit < maxiter
+        and sf.nfev < maxfun
+        and not istate.is_success
+    ):
         if iprint > 99 and logger is not None:
             logger.info("\n")
             logger.info(f"ITERATION {istate.nit + 1}\n")
 
-        f0_old: float = copy.copy(f0)
-        x.copy()
-        grad.copy()
+        f0_old = copy.copy(f0)
+        # x = x.copy()
+        # grad = grad.copy()
 
         # find cauchy point
         x_cp, c = get_cauchy_point(
@@ -488,34 +497,29 @@ def minimize_lbfgsb(
             # x update
             x += steplength * d
 
-            # new evaluation -> normally, the function has been update in
+            # new evaluation -> normally, the function has been updated in
             # the linesearch step
-            f0 = sf.fun(x)
+            f0, grad = sf.fun_and_grad(x)
 
-            # If there is no potential update of the objective function, check the
-            # target stop criterion and the minimum change criterion before
-            # evaluating the gradient. It can save a gradient for the last iteration.
             if update_fun_def is None:
                 if is_f0_target_reached(f0, _ftarget, istate):
-                    break
-                if is_f0_min_change_reached(f0, f0_old, ftol, istate):
-                    break
-
-            # Then evaluate the gradient
-            grad = sf.grad(x)
+                    istate.is_success = True
+                elif is_f0_min_change_reached(f0, f0_old, ftol, istate):
+                    istate.is_success = True
 
             # perform a potential update of the objective function definition and
             # upgrade the gradient and the past sequence of gradients accordingly
-            if update_fun_def is not None:
+            else:
                 f0, f0_old, grad, G = update_fun_def(x, f0, f0_old, grad, X, G)
 
-            # Check stop criterion: minimum relative change in the objective function
-            if is_f0_min_change_reached(f0, f0_old, ftol, istate):
-                break
+                # Check stop criterion: minimum relative change in the
+                # objective function
+                if is_f0_min_change_reached(f0, f0_old, ftol, istate):
+                    istate.is_success = True
 
-            # Check stop criterion: minimum objective function value
-            if is_f0_target_reached(f0, _ftarget, istate):
-                break
+                # Check stop criterion: minimum objective function value
+                elif is_f0_target_reached(f0, _ftarget, istate):
+                    istate.is_success = True
 
             mats = update_lbfgs_matrices(
                 x.copy(),  # copy otherwise x might be changed in X when updated
@@ -530,7 +534,9 @@ def minimize_lbfgsb(
 
             # callback is a user defined mechanism to stop optimization
             # if callback returns True, then it stops.
-            if callback is not None:
+            # Note: no need to calllback if an other stop criterion has already been
+            # reached (istate.is_success)
+            if callback is not None and not istate.is_success:
                 if callback(
                     np.copy(x),
                     OptimizeResult(
@@ -551,21 +557,21 @@ def minimize_lbfgsb(
                 ):
                     istate.task_str = "STOP: USER CALLBACK"
                     istate.is_success = True
-                    break
 
-            # Result display
-            display_results(
-                istate.nit, maxiter, x, grad, lb, ub, f0, _gtol, False, iprint, logger
-            )
+        display_iter(istate.nit + 1, projgr(x, grad, lb, ub), f0, iprint, logger)
 
-            display_iter(istate.nit + 1, projgr(x, grad, lb, ub), f0, iprint, logger)
+        # Result display
+        has_displayed_results = display_results(
+            istate.nit + 1, maxiter, x, grad, lb, ub, f0, _gtol, False, iprint, logger
+        )
 
         istate.nit += 1
 
-    # Final display
-    display_results(
-        istate.nit, maxiter, x, grad, lb, ub, f0, _gtol, True, iprint, logger
-    )
+    # Final display. If is_success, then it already happened
+    if not has_displayed_results:
+        display_results(
+            istate.nit, maxiter, x, grad, lb, ub, f0, _gtol, True, iprint, logger
+        )
 
     if projgr(x, grad, lb, ub) <= _gtol:
         istate.task_str = "CONVERGENCE: NORM_OF_PROJECTED_GRADIENT_<=_PGTOL"

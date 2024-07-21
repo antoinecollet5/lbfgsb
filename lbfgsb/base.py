@@ -237,7 +237,7 @@ def display_iter(
 
     """
     if iprint >= 1 and logger is not None:
-        logger.info(f"At iterate {niter} , f= {f} , |proj g|= {sbgnrm}")
+        logger.info(f"At iterate {niter} , f= {f:.3e} , |proj g|= {sbgnrm:.3e}")
 
 
 def display_results(
@@ -252,9 +252,9 @@ def display_results(
     is_final_display: bool,
     iprint: int,
     logger: Optional[logging.Logger] = None,
-) -> None:
+) -> bool:
     r"""
-    Disaply the optimization results on the fly.
+    Display the optimization results on the fly.
 
     Parameters
     ----------
@@ -287,15 +287,15 @@ def display_results(
 
     """
     if iprint is None or logger is None:
-        return
+        return False
     if iprint < 0:
-        return
+        return False
     if iprint == 0 and not is_final_display:
-        return
+        return False
     elif iprint == 0:
         pass
     elif iprint < 99 and n_iterations % iprint != 0:
-        return
+        return False
     logger.info(
         f"Iteration #{n_iterations:d} "
         f"(max: {max_iter:d}): "
@@ -305,3 +305,4 @@ def display_results(
         f"cdt_arret={projgr(x, grad, lb, ub):.3e} "
         f"(eps={gtol:.3e})"
     )
+    return True
