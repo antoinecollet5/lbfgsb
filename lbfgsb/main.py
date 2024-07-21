@@ -409,7 +409,7 @@ def minimize_lbfgsb(
 
     # Check the infinity norm of the projected gradient
     sbgnrm = projgr(x, grad, lb, ub)
-    display_iter(istate.nit, sbgnrm, f0, iprint)
+    display_iter(istate.nit, sbgnrm, f0, iprint, logger=logger)
 
     # Note that interruptions due to maxfun are postponed
     # until the completion of the current minimization iteration.
@@ -560,7 +560,7 @@ def minimize_lbfgsb(
 
             display_iter(istate.nit + 1, projgr(x, grad, lb, ub), f0, iprint, logger)
 
-            istate.nit += 1
+        istate.nit += 1
 
     # Final display
     display_results(
