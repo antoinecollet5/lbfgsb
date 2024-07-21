@@ -236,7 +236,7 @@ def display_iter(
         value of `iprint`, by default None.
 
     """
-    if iprint > 1 and logger is not None:
+    if iprint >= 1 and logger is not None:
         logger.info(f"At iterate {niter} , f= {f} , |proj g|= {sbgnrm}")
 
 
