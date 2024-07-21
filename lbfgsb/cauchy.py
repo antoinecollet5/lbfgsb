@@ -181,7 +181,7 @@ def get_cauchy_point(
     # old way: f2 = f2 - p.dot(M.dot(p))  # O(m^{2}) operations
     # new_way: not at first iteration -> invMfactors and M are worse zero.
     # And cho_solve produces nan so we use bmv
-    if iter != 0:
+    if mats.use_factor:
         f_second = f_second - p.dot(bmv(mats.invMfactors, p))  # O(m^{2}) operations
 
     # dtm in the fortran code
@@ -248,7 +248,7 @@ def get_cauchy_point(
 
         # First iteration -> invMfactors and M are worse zero.
         # And cho_solve produces nan
-        if iter != 0:
+        if mats.use_factor:
             f_prime -= g_b * W_b.dot(bmv(mats.invMfactors, c))
             f_second -= g_b * W_b.dot(bmv(mats.invMfactors, (2 * p + g_b * W_b)))
 

@@ -308,7 +308,6 @@ def subspace_minimization(
     lb: NDArrayFloat,
     ub: NDArrayFloat,
     mats: LBFGSB_MATRICES,
-    n_iterations: int,
 ) -> NDArrayFloat:
     r"""
     Computes an approximate solution of the subspace problem.
@@ -380,15 +379,15 @@ def subspace_minimization(
 
     r = grad + mats.theta * (xc - x)
     # At iter 0, M is [[0.0]] and so is invMfactors
-    if n_iterations != 0:
+    if mats.use_factor:
         r -= mats.W.dot(bmv(mats.invMfactors, c))
 
     rHat = [r[ind] for ind in free_vars]
     v = WTZ.dot(rHat)
 
     # Factorization of M^{-1}(I - 1/theta M WT Z @ ZT @ W))
-    if n_iterations != 0:
-        K = form_k(Z, A, WTZ, mats)
+    if mats.use_factor:
+        K = form_k(Z, A, WTZ, mats, is_assert_correct=True)
         # The assertion includes minor overhead
         LK: Optional[NDArrayFloat] = factorize_k(K, is_assert_correct=True)
     else:
@@ -403,7 +402,7 @@ def subspace_minimization(
     else:
         # This is less efficient but it should only happen if LK is None, i.e., at
         # iteration 0
-        if n_iterations != 0:
+        if mats.use_factor:
             v = bmv(mats.invMfactors, v)
             N = -bmv(mats.invMfactors, invThet * WTZ.dot(np.transpose(WTZ)))
         else:

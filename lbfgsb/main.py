@@ -449,7 +449,6 @@ def minimize_lbfgsb(
             lb,
             ub,
             mats,
-            istate.nit,
         )
         d = xbar - x
 
@@ -481,8 +480,8 @@ def minimize_lbfgsb(
             else:
                 istate.task_str = "RESTART_FROM_LNSRCH"
                 # Keep only the last correction
-                X = Deque(X[-1])
-                G = Deque(G[-1])
+                X = Deque([X[-1]])
+                G = Deque([G[-1]])
                 # Reboot BFGS-Hessian
                 mats = LBFGSB_MATRICES(n)
         else:

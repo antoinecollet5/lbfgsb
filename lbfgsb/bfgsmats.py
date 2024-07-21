@@ -82,6 +82,11 @@ class LBFGSB_MATRICES:
         )
         self.theta: float = 1.0
 
+    @property
+    def use_factor(self) -> bool:
+        """If the factors are null then matrix factorization will fail."""
+        return self.invMfactors[0].size != 1 or self.invMfactors[0][0, 0] != 0
+
 
 def bmv(
     invMfactors: Tuple[NDArrayFloat, NDArrayFloat], v: NDArrayFloat
