@@ -87,9 +87,9 @@ References
     ACM Transactions on Mathematical Software, 38, 1.
 
 """
-
 from lbfgsb import base, bfgsmats, cauchy, linesearch, scalar_function, subspacemin
 from lbfgsb.__about__ import __author__, __email__, __version__
+from lbfgsb._config import IS_CHECK_FACTORIZATION
 from lbfgsb.benchmarks import (
     ackley,
     ackley_grad,
@@ -139,4 +139,5 @@ __all__ = [
     "linesearch",
     "scalar_function",
     "subspacemin",
+    "IS_CHECK_FACTORIZATION",
 ]

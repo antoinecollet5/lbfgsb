@@ -1,7 +1,10 @@
+import lbfgsb
 import numpy as np
 from lbfgsb import minimize_lbfgsb
 from lbfgsb.types import NDArrayFloat
 from scipy.optimize import minimize
+
+lbfgsb.IS_CHECK_FACTORIZATION = True
 
 
 # Definition of some test functions
