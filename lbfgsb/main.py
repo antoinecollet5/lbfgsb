@@ -38,13 +38,14 @@ import copy
 import logging
 from collections import deque
 from dataclasses import dataclass
-from typing import Any, Callable, Deque, Optional, Tuple, Union
+from typing import Callable, Deque, Optional, Tuple, Union
 
 import numpy as np
 from scipy.optimize import (
     LbfgsInvHessProduct,  # noqa : F401
     OptimizeResult,
 )
+from typing_extensions import Protocol  # support python 3.7
 
 from lbfgsb.base import (
     clip2bounds,
@@ -64,6 +65,20 @@ from lbfgsb.subspacemin import get_freev, subspace_minimization
 from lbfgsb.types import NDArrayFloat
 
 
+class ObjectiveFunction(Protocol):
+    """Protocol for objective function signature."""
+
+    def __call__(self, __x, *args, **kwargs) -> float:
+        ...
+
+
+class GradientFunction(Protocol):
+    """Protocol for gradient signature."""
+
+    def __call__(self, __x, *args, **kwargs) -> NDArrayFloat:
+        ...
+
+
 @dataclass
 class InternalState:
     """Class to keep track of internal state."""
@@ -79,9 +94,9 @@ class InternalState:
 def minimize_lbfgsb(
     *,
     x0: NDArrayFloat,
-    fun: Optional[Callable[[NDArrayFloat, Any], float]] = None,
+    fun: Optional[ObjectiveFunction] = None,
     args: Tuple = (),
-    jac: Optional[Union[Callable[[NDArrayFloat, Any], NDArrayFloat], str, bool]] = None,
+    jac: Optional[Union[GradientFunction, str, bool]] = None,
     update_fun_def: Optional[
         Callable[
             [
