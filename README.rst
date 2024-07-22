@@ -2,7 +2,7 @@
 LBFGSB
 ======
 
-|License| |Stars| |Python| |PyPI| |Downloads| |Build Status| |Documentation Status| |Coverage| |Codacy| |Precommit: enabled| |Code style: black| |Ruff| |Mypy| |DOI|
+|License| |Stars| |Python| |PyPI| |Downloads| |Build Status| |Documentation Status| |Coverage| |Codacy| |Precommit: enabled| |Ruff| |Mypy| |DOI|
 
 A python impementation of the famous L-BFGS-B quasi-Newton solver [1].
 
@@ -13,24 +13,42 @@ Note that this is not a wrapper like `minimize`` in scipy but a complete
 reimplementation (pure python).
 The original Fortran code can be found here: https://dl.acm.org/doi/10.1145/279232.279236
 
+Motivations
+-----------
+
+Although there are many implementations or ports (wrappings) of the lbfgsb code,
+as evidenced by the list compiled by `Jonathan Schilling <https://github.com/jonathanschilling/L-BFGS-B>`_,
+in the vast majority, these are merely interfaces (wrapper) to access highly optimized
+Fortran or C code. In Python, for example, this is the case for `scipy <https://docs.scipy.org/doc/scipy/reference/optimize.minimize-lbfgsb.html>`_.
+These codes mainly date back to the 90s and are difficult to understand, and therefore difficult to maintain or modify.
+Incidentally, the only other python implementation we know of to date,
+by `Avieira <https://github.com/avieira/python_lbfgsb>`_, is not very optimized and under GPL3 license,
+which makes it tricky to use.
+
+In this context, the objectives of this code are as follows:
+
+- learn the underlying mechanisms of lbfgsb code;
+- provide understandable, modern code using the high-level language python, while using typing, explicit function names and standardized formatting thanks to `Ruff <https://docs.astral.sh/ruff/>`_;
+- provide detailed and explicit documentation;
+- offer totally free code, including for commercial use, thanks to the MIT license;
+- garantee efficient code, with the number of calls to the objective function and gradient at least as low as in the reference implementation, and without drastically increasing memory consumption or computation time, thanks to the use of numpy and vectorization;
+- add relevant stopping criteria;
+- add the possibility of modifying on-the-fly the gradient sequences stored in memory, an essential mechanism for the automatic and adaptive weighting of a possible regularization term, See (TODO). This is one of the initial motivation;
+- use a logging system rather than prints, for better integration within complex apps.
+
 References
 ----------
 [1] R. H. Byrd, P. Lu and J. Nocedal. A Limited Memory Algorithm for Bound
-    Constrained Optimization, (1995), SIAM Journal on Scientific and
-    Statistical Computing, 16, 5, pp. 1190-1208.
-[2] C. Zhu, R. H. Byrd and J. Nocedal. L-BFGS-B: Algorithm 778: L-BFGS-B,
-    FORTRAN routines for large scale bound constrained optimization (1997),
-    ACM Transactions on Mathematical Software, 23, 4, pp. 550 - 560.
-[3] J.L. Morales and J. Nocedal. L-BFGS-B: Remark on Algorithm 778: L-BFGS-B,
-    FORTRAN routines for large scale bound constrained optimization (2011),
-    ACM Transactions on Mathematical Software, 38, 1.
+Constrained Optimization, (1995), SIAM Journal on Scientific and
+Statistical Computing, 16, 5, pp. 1190-1208.
 
-The aim of this reimplementation was threefold. First, familiarize ourselves with
-the code, its logic and inner optimizations. Second, gain access to certain
-parameters that are hard-coded in the Fortran code and cannot be modified (typically
-wolfe conditions parameters for the line search). Third,
-implement additional functionalities that require significant modification of
-the code core.
+[2] C. Zhu, R. H. Byrd and J. Nocedal. L-BFGS-B: Algorithm 778: L-BFGS-B,
+FORTRAN routines for large scale bound constrained optimization (1997),
+ACM Transactions on Mathematical Software, 23, 4, pp. 550 - 560.
+
+[3] J.L. Morales and J. Nocedal. L-BFGS-B: Remark on Algorithm 778: L-BFGS-B,
+FORTRAN routines for large scale bound constrained optimization (2011),
+ACM Transactions on Mathematical Software, 38, 1.
 
 * Free software: MIT license
 * Documentation: https://lbfgsb.readthedocs.io.
