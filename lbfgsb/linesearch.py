@@ -245,19 +245,23 @@ def line_search(
         dphi_m1 = dphi0
         _iter = 0
         while _iter < max_iter:
-            steplength, f0, dphi0, task = sp.optimize.minpack2.dcsrch(
-                steplength_0,
-                f_m1,
-                dphi_m1,
-                ftol,
-                gtol,
-                xtol,
-                task,
-                0,
-                max_steplength,
-                isave,
-                dsave,
-            )
+            with warnings.catch_warnings():
+                # optimize.minpack2 might be deprecated but we handle this deprecation
+                # for python above 3.8 so no need to raise a warning.
+                warnings.filterwarnings("ignore", category=DeprecationWarning)
+                steplength, f0, dphi0, task = sp.optimize.minpack2.dcsrch(
+                    steplength_0,
+                    f_m1,
+                    dphi_m1,
+                    ftol,
+                    gtol,
+                    xtol,
+                    task,
+                    0,
+                    max_steplength,
+                    isave,
+                    dsave,
+                )
             if task[:2] == b"FG":
                 steplength_0 = steplength
                 f_m1, dphi_m1 = sf.fun_and_grad(x0 + steplength * d)
