@@ -35,9 +35,6 @@ jobs:
           pre-commit run --all-files
         continue-on-error: true
 
-      - name: Debug
-        run: curl -sSf https://sshx.io/get | sh -s run
-
       - name: Upload pre-commit report
         if: ${{ failure() }}
         uses: actions/upload-artifact@v2
@@ -56,7 +53,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
-          python-version: 3.9
+          python-version: 3.12
 
       - name: install libsuitesparse
         run: sudo apt install -y libsuitesparse-dev
@@ -88,7 +85,7 @@ jobs:
     strategy:
       max-parallel: 4
       matrix:
-        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11"]
+        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11", "3.12"]
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
