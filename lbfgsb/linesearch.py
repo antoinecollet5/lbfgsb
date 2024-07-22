@@ -23,11 +23,14 @@ sufficient decrease.
 
 import logging
 import warnings
-from typing import Callable, Optional
+from typing import Optional
 
 import numpy as np
-from scipy.optimize._dcsrch import DCSRCH
+import scipy as sp
+from packaging.version import Version
+from scipy import __version__ as spversion
 
+from lbfgsb.scalar_function import ScalarFunction
 from lbfgsb.types import NDArrayFloat
 
 
@@ -37,7 +40,7 @@ def max_allowed_steplength(
     lb: NDArrayFloat,
     ub: NDArrayFloat,
     max_steplength: float,
-    iter: int,
+    n_iter: int,
 ) -> float:
     r"""
     Computes the biggest 0<=k<=max_steplength such that:
@@ -55,6 +58,8 @@ def max_allowed_steplength(
         The upper bound of x
     max_steplength : float
         Maximum steplength allowed.
+    n_iter: int
+        Current number of outer itreations.
 
     Returns
     -------
@@ -74,7 +79,7 @@ def max_allowed_steplength(
       ACM Transactions on Mathematical Software, 38, 1.
     """
     # Determine the maximum step length.
-    if iter == 0:
+    if n_iter == 0:
         return 1.0  # we are not sure this is a good idea
     with np.errstate(divide="ignore"):
         _mask = d != 0
@@ -96,8 +101,7 @@ def line_search(
     above_iter: int,
     max_steplength_user: float,
     is_boxed: bool,
-    fun: Callable[[NDArrayFloat], float],
-    jac: Callable[[NDArrayFloat], NDArrayFloat],
+    sf: ScalarFunction,
     ftol: float = 1e-3,
     gtol: float = 0.9,
     xtol: float = 1e-1,
@@ -121,9 +125,10 @@ def line_search(
 
     Note
     ----
-    This subroutine calls subroutine dcsrch from the Minpack2 library
-    to perform the line search.  Subroutine dscrch is safeguarded so
-    that all trial points lie within the feasible region.
+    When using scipy-1.11 and below, this subroutine calls subroutine dcsrch from the
+    Minpack2 library to perform the line search.  Subroutine dscrch is safeguarded so
+    that all trial points lie within the feasible region. Otherwise, it uses the
+    python reimplementation introduced in scipy-1.12.
 
     Parameters
     ----------
@@ -145,11 +150,8 @@ def line_search(
         Maximum steplength allowed.
     is_boxed: bool
         Whether all values have both lower and upper bounds.
-    fun: Callable[[NDArrayFloat], float]
-        Function returning the objective function for a given vector x.
-    jac: Callable[[NDArrayFloat], NDArrayFloat]
-        Function returning the objective function gradient with respect to
-        a given vector x.
+    sf: ScalarFunction
+        Wrapper for the objective function and its gradient.
     ftol_linesearch: float, optional
         Specify a nonnegative tolerance for the sufficient decrease condition in
         `minpack2.dcsrch <https://ftp.mcs.anl.gov/pub/MINPACK-2/csrch/dcsrch.f>`_
@@ -224,14 +226,6 @@ def line_search(
         x0, d, lb, ub, max_steplength_user, above_iter
     )
 
-    def phi(alpha: float) -> float:
-        """Return the objective function for a steplength of `alpha`"""
-        return fun(x0 + alpha * d)
-
-    def dphi(alpha: float) -> NDArrayFloat:
-        """Return the gradient of `phi` with respect to alpha."""
-        return jac(x0 + alpha * d).dot(d)
-
     dphi0 = g0.dot(d)
 
     if above_iter == 0 and not is_boxed:
@@ -239,10 +233,58 @@ def line_search(
     else:
         steplength_0 = 1.0
 
-    dcsrch = DCSRCH(phi, dphi, ftol, gtol, xtol, 0.0, max_steplength)
-    steplength, f0, _, task = dcsrch(
-        steplength_0, phi0=f0, derphi0=dphi0, maxiter=max_iter
-    )
+    # Support for python 3.7 and 3.8: the minpack2 wrapper has been removed from
+    # scipy from version 1.12 and replaced with a python implementation.
+    # Unfortunately, python 3.7 and 3.8 do not support scipy-1.12
+    # So we need to use the old minpack2 Fortran implementation
+    is_use_minpack2: bool = Version(spversion) < Version("1.12")
+
+    if is_use_minpack2:  # scipy older than 1.12, uses the Fortran implementation
+        task = b"START"
+        f_m1 = f0
+        dphi_m1 = dphi0
+        _iter = 0
+        while _iter < max_iter:
+            steplength, f0, dphi0, task = sp.optimize.minpack2.dcsrch(
+                steplength_0,
+                f_m1,
+                dphi_m1,
+                ftol,
+                gtol,
+                xtol,
+                task,
+                0,
+                max_steplength,
+                isave,
+                dsave,
+            )
+            if task[:2] == b"FG":
+                steplength_0 = steplength
+                f_m1, dphi_m1 = sf.fun_and_grad(x0 + steplength * d)
+                dphi_m1 = dphi_m1.dot(d)
+            else:
+                break
+            _iter += 1
+        else:
+            # max_iter reached, the line search did not converge
+            steplength = None
+
+    else:  # newer version, with a pure python implementation
+
+        def phi(alpha: float) -> float:
+            """Return the objective function for a steplength of `alpha`"""
+            return sf.fun(x0 + alpha * d)
+
+        def dphi(alpha: float) -> NDArrayFloat:
+            """Return the gradient of `phi` with respect to alpha."""
+            return sf.grad(x0 + alpha * d).dot(d)
+
+        dcsrch = sp.optimize._dcsrch.DCSRCH(
+            phi, dphi, ftol, gtol, xtol, 0.0, max_steplength
+        )
+        steplength, f0, _, task = dcsrch(
+            steplength_0, phi0=f0, derphi0=dphi0, maxiter=max_iter
+        )
 
     if task[:5] == b"ERROR" or task[:4] == b"WARN":
         if task[:21] != b"WARNING: STP = STPMAX":
