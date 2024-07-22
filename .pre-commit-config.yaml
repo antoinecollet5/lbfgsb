@@ -8,44 +8,30 @@ repos:
     - id: check-yaml
     - id: end-of-file-fixer
     - id: trailing-whitespace
-- repo: https://github.com/PyCQA/autoflake
-  rev: v2.2.0
-  hooks:
-    -   id: autoflake
 - repo: local
   hooks:
-  - id: black
-    name: black
-    description: "Black: The uncompromising Python code formatter"
-    entry: black
-    language: python
-    require_serial: true
-    types_or: [python, pyi]
-  - id: black-jupyter
-    name: black-jupyter
-    description:
-      "Black: The uncompromising Python code formatter (with Jupyter Notebook support)"
-    entry: black
-    language: python
-    require_serial: true
-    types_or: [python, pyi, jupyter]
-    additional_dependencies: [".[jupyter]"]
   - id: codespell
     name: codespell
+    description: Checks for common misspellings in text files.
     entry: codespell
-    language: system
+    language: python
     types: [python]
     args: [
-      "docs tests",
+      "lbfgsb docs tests",
       "*.py *.rst *.md",
     ]
     exclude: >
             (?x)^(
                 bibliography.bib
             )$
-  - id: ruff
-    name: ruff
+  - id: ruff check
+    name: ruff check
     entry: ruff check
     language: python
-    types: [python]
+    types_or: [ python, pyi]
     args: [--fix, --exit-non-zero-on-fix]
+  - id: ruff-format
+    name: ruff format
+    entry: ruff format
+    language: python
+    types_or: [ python, pyi, jupyter ]

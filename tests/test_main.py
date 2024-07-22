@@ -60,7 +60,7 @@ def rosenbrock(x) -> float:
 def grad_rosenbrock(x) -> NDArrayFloat:
     g = np.empty(x.size)
     g[0] = 400 * x[0] * (x[0] ** 2 - x[1]) + 2 * (x[0] - 1)
-    g[1] = 200 * (-x[0] ** 2 + x[1])
+    g[1] = 200 * (-(x[0] ** 2) + x[1])
     return g
 
 

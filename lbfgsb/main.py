@@ -68,15 +68,13 @@ from lbfgsb.types import NDArrayFloat
 class ObjectiveFunction(Protocol):
     """Protocol for objective function signature."""
 
-    def __call__(self, __x, *args, **kwargs) -> float:
-        ...
+    def __call__(self, __x, *args, **kwargs) -> float: ...
 
 
 class GradientFunction(Protocol):
     """Protocol for gradient signature."""
 
-    def __call__(self, __x, *args, **kwargs) -> NDArrayFloat:
-        ...
+    def __call__(self, __x, *args, **kwargs) -> NDArrayFloat: ...
 
 
 @dataclass
@@ -535,7 +533,7 @@ def minimize_lbfgsb(
 
             # callback is a user defined mechanism to stop optimization
             # if callback returns True, then it stops.
-            # Note: no need to calllback if an other stop criterion has already been
+            # Note: no need to callback if an other stop criterion has already been
             # reached (istate.is_success)
             if callback is not None and not istate.is_success:
                 if callback(
