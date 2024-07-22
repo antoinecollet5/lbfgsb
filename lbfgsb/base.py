@@ -12,10 +12,8 @@ Functions
     clip2bounds
     count_var_at_bounds
     projgr
-    projgr_ens
     display_start
     display_iter
-    display_iter_ensemble
     display_results
 
 """
