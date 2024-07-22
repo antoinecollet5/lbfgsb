@@ -23,10 +23,10 @@ sufficient decrease.
 
 import logging
 import warnings
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional
 
 import numpy as np
-import scipy as sp
+from scipy.optimize._dcsrch import DCSRCH
 
 from lbfgsb.types import NDArrayFloat
 
@@ -96,7 +96,8 @@ def line_search(
     above_iter: int,
     max_steplength_user: float,
     is_boxed: bool,
-    fun_and_grad: Callable[[NDArrayFloat], Tuple[float, NDArrayFloat]],
+    fun: Callable[[NDArrayFloat], float],
+    jac: Callable[[NDArrayFloat], NDArrayFloat],
     ftol: float = 1e-3,
     gtol: float = 0.9,
     xtol: float = 1e-1,
@@ -144,8 +145,10 @@ def line_search(
         Maximum steplength allowed.
     is_boxed: bool
         Whether all values have both lower and upper bounds.
-    fun_and_grad : Callable[[NDArrayFloat], Tuple[float, NDArrayFloat]]
-        Function returning both the objective function and its gradient with respect to
+    fun: Callable[[NDArrayFloat], float]
+        Function returning the objective function for a given vector x.
+    jac: Callable[[NDArrayFloat], NDArrayFloat]
+        Function returning the objective function gradient with respect to
         a given vector x.
     ftol_linesearch: float, optional
         Specify a nonnegative tolerance for the sufficient decrease condition in
@@ -221,42 +224,25 @@ def line_search(
         x0, d, lb, ub, max_steplength_user, above_iter
     )
 
-    f_m1 = f0
-    dphi = g0.dot(d)
-    dphi_m1 = dphi
-    iter = 0
+    def phi(alpha: float) -> float:
+        """Return the objective function for a steplength of `alpha`"""
+        return fun(x0 + alpha * d)
+
+    def dphi(alpha: float) -> NDArrayFloat:
+        """Return the gradient of `phi` with respect to alpha."""
+        return jac(x0 + alpha * d).dot(d)
+
+    dphi0 = g0.dot(d)
 
     if above_iter == 0 and not is_boxed:
         steplength_0 = min(1.0 / np.sqrt(d.dot(d)), max_steplength)
     else:
         steplength_0 = 1.0
 
-    task = b"START"
-
-    while iter < max_iter:
-        steplength, f0, dphi, task = sp.optimize.minpack2.dcsrch(
-            steplength_0,
-            f_m1,
-            dphi_m1,
-            ftol,
-            gtol,
-            xtol,
-            task,
-            0,
-            max_steplength,
-            isave,
-            dsave,
-        )
-        if task[:2] == b"FG":
-            steplength_0 = steplength
-            f_m1, dphi_m1 = fun_and_grad(x0 + steplength * d)
-            dphi_m1 = dphi_m1.dot(d)
-        else:
-            break
-        iter += 1
-    else:
-        # max_iter reached, the line search did not converge
-        steplength = None
+    dcsrch = DCSRCH(phi, dphi, ftol, gtol, xtol, 0.0, max_steplength)
+    steplength, f0, _, task = dcsrch(
+        steplength_0, phi0=f0, derphi0=dphi0, maxiter=max_iter
+    )
 
     if task[:5] == b"ERROR" or task[:4] == b"WARN":
         if task[:21] != b"WARNING: STP = STPMAX":
