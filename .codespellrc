@@ -1,0 +1,4 @@
+[codespell]
+skip = *.pyc,*.gif,*.png,*.jpg,*.ply, ./bibliography.bib,*.ipynb
+quiet-level = 3
+ignore-words-list = lod,byteorder,flem,parm,doubleclick,revered,inout,fro,nd,sies,COLLET,collet,Collet
