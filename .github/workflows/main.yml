@@ -55,9 +55,6 @@ jobs:
         with:
           python-version: 3.12
 
-      - name: install libsuitesparse
-        run: sudo apt install -y libsuitesparse-dev
-
       - name: Install dependencies
         run: pip install -r requirements_dev.txt
 
