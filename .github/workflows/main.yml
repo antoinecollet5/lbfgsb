@@ -23,9 +23,6 @@ jobs:
         with:
           python-version: 3.9
 
-      - name: install libsuitesparse
-        run: sudo apt install -y libsuitesparse-dev
-
       - name: Install dependencies
         run: pip install -r requirements_dev.txt
 
@@ -91,9 +88,6 @@ jobs:
         uses: actions/setup-python@v2
         with:
           python-version: ${{ matrix.python-version }}
-
-      - name: install libsuitesparse
-        run: sudo apt install -y libsuitesparse-dev
 
       - name: Install tox
         run: python3 -m pip install tox
