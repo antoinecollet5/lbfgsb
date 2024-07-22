@@ -32,6 +32,6 @@ repos:
     args: [--fix, --exit-non-zero-on-fix]
   - id: ruff-format
     name: ruff format
-    entry: ruff format -v && git status
+    entry: ruff format
     language: python
     types_or: [ python, pyi, jupyter ]
