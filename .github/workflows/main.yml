@@ -104,5 +104,5 @@ jobs:
       - name: Upload distribution artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ubuntu-python-package-${{matrix.os}}-${{matrix.python.py}}
-          path: dist/ubuntu-python-package-${{matrix.os}}-${{matrix.python.py}}.whl
+          name: ubuntu-python-package-${{matrix.python-version}}
+          path: dist/*.whl
