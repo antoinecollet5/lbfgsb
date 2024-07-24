@@ -239,16 +239,39 @@ def line_search(
     # So we need to use the old minpack2 Fortran implementation
     is_use_minpack2: bool = Version(spversion) < Version("1.12")
 
-    if is_use_minpack2:  # scipy older than 1.12, uses the Fortran implementation
-        task = b"START"
-        f_m1 = f0
-        dphi_m1 = dphi0
-        _iter = 0
-        while _iter < max_iter:
-            with warnings.catch_warnings():
-                # optimize.minpack2 might be deprecated but we handle this deprecation
-                # for python above 3.8 so no need to raise a warning.
-                warnings.filterwarnings("ignore", category=DeprecationWarning)
+    def phi(alpha: float) -> float:
+        """Return the objective function for a steplength of `alpha`"""
+        return sf.fun(x0 + alpha * d)
+
+    def dphi(alpha: float) -> NDArrayFloat:
+        """Return the gradient of `phi` with respect to alpha."""
+        return sf.grad(x0 + alpha * d).dot(d)
+
+    task = b"START"
+    f_m1 = f0
+    dphi_m1 = dphi0
+    _iter = 0
+
+    if not is_use_minpack2:
+        # careful, there is an issue in the DCSRRCH.__call__ function. It returns
+        # steplength = None when task is a warning while it should not be the case
+        # for instance when steplength = max_steplength
+        # So we must implement a while loop again.
+        # steplength, f0, _, task = dcsrch(
+        #     steplength_0, phi0=f0, derphi0=dphi0, maxiter=max_iter
+        # )
+        dcsrch = sp.optimize._dcsrch.DCSRCH(
+            phi, dphi, ftol, gtol, xtol, 0.0, max_steplength
+        )
+
+    while _iter < max_iter:
+        with warnings.catch_warnings():
+            # optimize.minpack2 might be deprecated but we handle this deprecation
+            # for python above 3.8 so no need to raise a warning.
+            warnings.filterwarnings("ignore", category=DeprecationWarning)
+            if (
+                is_use_minpack2
+            ):  # scipy older than 1.12, uses the Fortran implementation
                 steplength, f0, dphi0, task = sp.optimize.minpack2.dcsrch(
                     steplength_0,
                     f_m1,
@@ -262,42 +285,36 @@ def line_search(
                     isave,
                     dsave,
                 )
-            if task[:2] == b"FG":
-                steplength_0 = steplength
-                f_m1, dphi_m1 = sf.fun_and_grad(x0 + steplength * d)
-                dphi_m1 = dphi_m1.dot(d)
             else:
-                break
-            _iter += 1
+                # newer version, with a pure python implementation
+                steplength, f0, dphi0, task = dcsrch._iterate(
+                    steplength_0, f_m1, dphi_m1, task
+                )
+
+        if task[:2] == b"FG":
+            steplength_0 = steplength
+            f_m1, dphi_m1 = sf.fun_and_grad(x0 + steplength * d)
+            dphi_m1 = dphi_m1.dot(d)
         else:
-            # max_iter reached, the line search did not converge
-            steplength = None
+            break
+        _iter += 1
+    else:
+        # max_iter reached, the line search did not converge
+        task = b"WARNING: dcsrch did not converge within max iterations"
+        steplength = None
 
-    else:  # newer version, with a pure python implementation
+    if not np.isfinite(steplength):
+        task = b"ERROR"
+        steplength = None
 
-        def phi(alpha: float) -> float:
-            """Return the objective function for a steplength of `alpha`"""
-            return sf.fun(x0 + alpha * d)
-
-        def dphi(alpha: float) -> NDArrayFloat:
-            """Return the gradient of `phi` with respect to alpha."""
-            return sf.grad(x0 + alpha * d).dot(d)
-
-        dcsrch = sp.optimize._dcsrch.DCSRCH(
-            phi, dphi, ftol, gtol, xtol, 0.0, max_steplength
-        )
-        steplength, f0, _, task = dcsrch(
-            steplength_0, phi0=f0, derphi0=dphi0, maxiter=max_iter
-        )
-
-    if task[:5] == b"ERROR" or task[:4] == b"WARN":
-        if task[:21] != b"WARNING: STP = STPMAX":
-            warnings.warn(task.decode("utf-8"))
-            steplength = None  # failed
+    if task[:4] != b"CONV" and task[:4] != b"WARN":
+        steplength = None  # failed
+    else:
+        task = b"NEW_X"
 
     if iprint >= 99 and logger is not None and steplength is not None:
         logger.info(
-            f"LINE SEARCH  {iter} times; norm of step = "
+            f"LINE SEARCH {iter} times; norm of step = "
             f"{steplength * np.linalg.norm(d)}"
         )
 
