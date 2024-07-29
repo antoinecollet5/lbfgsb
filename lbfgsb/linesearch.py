@@ -23,6 +23,7 @@ sufficient decrease.
 
 import logging
 import warnings
+from copy import copy
 from typing import Optional
 
 import numpy as np
@@ -265,13 +266,11 @@ def line_search(
         )
 
     while _iter < max_iter:
-        with warnings.catch_warnings():
-            # optimize.minpack2 might be deprecated but we handle this deprecation
-            # for python above 3.8 so no need to raise a warning.
-            warnings.filterwarnings("ignore", category=DeprecationWarning)
-            if (
-                is_use_minpack2
-            ):  # scipy older than 1.12, uses the Fortran implementation
+        if is_use_minpack2:  # scipy older than 1.12, uses the Fortran implementation
+            with warnings.catch_warnings():
+                # optimize.minpack2 might be deprecated but we handle this deprecation
+                # for python above 3.8 so no need to raise a warning.
+                warnings.filterwarnings("ignore", category=DeprecationWarning)
                 steplength, f0, dphi0, task = sp.optimize.minpack2.dcsrch(
                     steplength_0,
                     f_m1,
@@ -285,32 +284,37 @@ def line_search(
                     isave,
                     dsave,
                 )
-            else:
-                # newer version, with a pure python implementation
-                steplength, f0, dphi0, task = dcsrch._iterate(
-                    steplength_0, f_m1, dphi_m1, task
-                )
+        else:
+            # newer version, with a pure python implementation
+            steplength, f0, dphi0, task = dcsrch._iterate(
+                steplength_0, f_m1, dphi_m1, task
+            )
 
         if task[:2] == b"FG":
+            stp_old: float = copy(steplength_0)
+            f_m1_old: float = copy(f_m1)
             steplength_0 = steplength
             f_m1, dphi_m1 = sf.fun_and_grad(x0 + steplength * d)
             dphi_m1 = dphi_m1.dot(d)
+            best_stp = steplength if f_m1 < f_m1_old else stp_old
         else:
             break
         _iter += 1
     else:
         # max_iter reached, the line search did not converge
         task = b"WARNING: dcsrch did not converge within max iterations"
-        steplength = None
 
-    if not np.isfinite(steplength):
-        task = b"ERROR"
-        steplength = None
+    if steplength is not None:
+        if not np.isfinite(steplength):
+            task = b"ERROR"
+            return None
 
     if task[:4] != b"CONV" and task[:4] != b"WARN":
-        steplength = None  # failed
-    else:
-        task = b"NEW_X"
+        return None
+
+    steplength = best_stp
+
+    task = b"NEW_X"
 
     if iprint >= 99 and logger is not None and steplength is not None:
         logger.info(
