@@ -57,7 +57,11 @@ from lbfgsb.base import (
     is_any_inf,
     projgr,
 )
-from lbfgsb.bfgsmats import LBFGSB_MATRICES, update_lbfgs_matrices
+from lbfgsb.bfgsmats import (
+    LBFGSB_MATRICES,
+    make_X_and_G_respect_strong_wolfe,
+    update_lbfgs_matrices,
+)
 from lbfgsb.cauchy import get_cauchy_point
 from lbfgsb.linesearch import line_search
 from lbfgsb.scalar_function import ScalarFunction, prepare_scalar_function
@@ -518,6 +522,9 @@ def minimize_lbfgsb(
                 # Check stop criterion: minimum objective function value
                 elif is_f0_target_reached(f0, _ftarget, istate):
                     istate.is_success = True
+
+                # We must check if the updated G satisfy the strong wolfe condition
+                X, G = make_X_and_G_respect_strong_wolfe(X, G, eps_SY, logger)
 
             mats = update_lbfgs_matrices(
                 x.copy(),  # copy otherwise x might be changed in X when updated

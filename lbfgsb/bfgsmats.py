@@ -29,7 +29,8 @@ Reference:
 :cite:`byrdLimitedMemoryAlgorithm1995`
 """
 
-from typing import Deque, Tuple
+import logging
+from typing import Deque, Optional, Tuple
 
 import numpy as np
 import scipy as sp
@@ -296,20 +297,63 @@ def update_X_and_G(
     eps: float = 2.2e-16,
 ) -> bool:
     """
+
+    Parameters
+    ----------
+    xk : NDArrayFloat
+        New adjusted values vector.
+    gk : NDArrayFloat
+        New gradient vector.
+    X : Deque[NDArrayFloat]
+        Sequence of past adjusted values vectors respecting the strong wolfe conditions.
+    G : Deque[NDArrayFloat]
+        Sequence of past gradient vectors respecting the strong wolfe conditions.
+    maxcor : int
+        Maximum number of corrections stored (m).
+    eps : float, optional
+        _description_, by default 2.2e-16
+
+    Returns
+    -------
+    bool
+        _description_
+    """
+    if not is_update_X_and_G(xk, gk, X[-1], G[-1], eps):
+        return False
+
+    X.append(xk)
+    G.append(gk)
+    # maxcor is the number of corrections m (see S and Y shapes),
+    # so we must keep one more gradient and parameter vectors.
+    if len(X) > maxcor + 1:
+        X.popleft()
+        G.popleft()
+
+    return True
+
+
+def is_update_X_and_G(
+    xk: NDArrayFloat,
+    gk: NDArrayFloat,
+    x_old: NDArrayFloat,
+    g_old: NDArrayFloat,
+    eps: float = 2.2e-16,
+) -> bool:
+    """
     Update the sequence of parameters X and gradients G with a strong wolfe condition.
 
     Parameters
     ----------
     xk : NDArrayFloat
-        _description_
+        New adjusted values vector (at iteration k).
     gk : NDArrayFloat
-        _description_
-    X : Deque[NDArrayFloat]
-        _description_
-    G : Deque[NDArrayFloat]
-        _description_
+        New gradient vector (at iteration k).
+    x_old : NDArrayFloat
+        Previous adjusted values vector (at iteration k-1).
+    g_old : NDArrayFloat
+        Previous gradient vector (at iteration k-1).
     maxcor : int
-        _description_
+        Maximum number of corrections stored (m).
     eps : float, optional
         _description_, by default 2.2e-16
 
@@ -318,8 +362,8 @@ def update_X_and_G(
     bool
         Whether the current step as been accepted.
     """
-    yk = gk - G[-1]
-    sTy = (xk - X[-1]).dot(yk)  # type: ignore
+    yk = gk - g_old
+    sTy = (xk - x_old).dot(yk)  # type: ignore
     yTy = (yk).dot(yk)  # type: ignore
 
     # See eq. (3.9) in [1].
@@ -328,12 +372,49 @@ def update_X_and_G(
     # We discuss these issues further in Chapter 6. (See Numerical optimization in
     # Noecedal and Wright)
     if sTy > eps * yTy:
-        X.append(xk)
-        G.append(gk)
-        # maxcor is the number of corrections m (see S and Y shapes),
-        # so we must keep one more gradient and parameter vectors.
-        if len(X) > maxcor + 1:
-            X.popleft()
-            G.popleft()
         return True
     return False
+
+
+def make_X_and_G_respect_strong_wolfe(
+    X: Deque[NDArrayFloat],
+    G: Deque[NDArrayFloat],
+    eps: float = 2.2e-16,
+    logger: Optional[logging.Logger] = None,
+) -> Tuple[Deque[NDArrayFloat], Deque[NDArrayFloat]]:
+    """
+
+    Parameters
+    ----------
+    X : Deque[NDArrayFloat]
+        Sequence of past adjusted values vectors respecting the strong wolfe conditions.
+    G : Deque[NDArrayFloat]
+        Sequence of past gradient vectors respecting the strong wolfe conditions.
+    eps : float, optional
+        _description_, by default 2.2e-16
+    logger: Optional[Logger], optional
+        :class:`logging.Logger` instance. If None, nothing is displayed, no matter the
+        value of `iprint`, by default None.
+
+    Returns
+    -------
+    Tuple[Deque[NDArrayFloat], Deque[NDArrayFloat]]
+        _description_
+    """
+
+    ncor: int = len(X) - 1
+    _X, _G = Deque([X[-1]]), Deque([G[-1]])
+    for i in range(ncor):
+        k = ncor - i - 1  # start at 1
+        if not is_update_X_and_G(X[k], G[k], _X[0], _G[0], eps):
+            if logger is not None:
+                logger.info(f"Dropping update #{- i - 2}")
+        else:
+            _X.appendleft(X[k])
+            _G.appendleft(G[k])
+
+    # This is for debug
+    if len(_G) != len(G) and logger is not None:
+        # if logger is not None:
+        logger.info(f"len(newG) = {len(_G)}, len(oldG) = {len(G)}")
+    return _X, _G
