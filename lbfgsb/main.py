@@ -352,7 +352,7 @@ def minimize_lbfgsb(
     # wrapper storing the calls to f and g and handling finite difference approximation
     sf: ScalarFunction = prepare_scalar_function(
         fun,
-        x0,
+        x,
         jac=jac,
         args=args,
         epsilon=eps,
@@ -383,9 +383,9 @@ def minimize_lbfgsb(
     # early check of stop criterion -> Extreme case in which x0 satisfies the
     # criterion, then no optimization is needed and one does not need to compute
     # anything else.
-    if is_f0_target_reached(f0, _ftarget, istate):
+    if is_f0_target_reached(f0 / sf.scaling_factor, _ftarget, istate):
         # leave the optimization routine
-        X.append(x0)
+        X.append(x)
         G.append(np.zeros_like(x))
         return OptimizeResult(
             fun=f0,
@@ -410,6 +410,9 @@ def minimize_lbfgsb(
     if gradient_scaler is not None:
         sf.scaling_factor = gradient_scaler(x, grad, lb, ub)
 
+        if logger is not None:
+            logger.info(f"scaling factor = {sf.scaling_factor:.2e}")
+
     # print(sf.scaling_factor)
 
     f0 *= sf.scaling_factor
@@ -423,7 +426,7 @@ def minimize_lbfgsb(
         f0, f0_old, grad, G = update_fun_def(x, f0, copy.copy(f0), grad, X, G)
 
     # Store first res to X and G
-    X.append(x0)
+    X.append(np.copy(x))
     G.append(grad)
 
     # For now the free variables at the cauchy points is an empty set
@@ -524,7 +527,7 @@ def minimize_lbfgsb(
             f0, grad = sf.fun_and_grad(x)
 
             if update_fun_def is None:
-                if is_f0_target_reached(f0, _ftarget, istate):
+                if is_f0_target_reached(f0 / sf.scaling_factor, _ftarget, istate):
                     istate.is_success = True
                 elif is_f0_min_change_reached(f0, f0_old, ftol, istate):
                     istate.is_success = True
@@ -540,7 +543,7 @@ def minimize_lbfgsb(
                     istate.is_success = True
 
                 # Check stop criterion: minimum objective function value
-                elif is_f0_target_reached(f0, _ftarget, istate):
+                elif is_f0_target_reached(f0 / sf.scaling_factor, _ftarget, istate):
                     istate.is_success = True
 
                 # We must check if the updated G satisfy the strong wolfe condition
