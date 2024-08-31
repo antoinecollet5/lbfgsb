@@ -352,7 +352,7 @@ def minimize_lbfgsb(
     # wrapper storing the calls to f and g and handling finite difference approximation
     sf: ScalarFunction = prepare_scalar_function(
         fun,
-        x,
+        x0,
         jac=jac,
         args=args,
         epsilon=eps,
@@ -385,7 +385,7 @@ def minimize_lbfgsb(
     # anything else.
     if is_f0_target_reached(f0, _ftarget, istate):
         # leave the optimization routine
-        X.append(x)
+        X.append(x0)
         G.append(np.zeros_like(x))
         return OptimizeResult(
             fun=f0,
@@ -423,7 +423,7 @@ def minimize_lbfgsb(
         f0, f0_old, grad, G = update_fun_def(x, f0, copy.copy(f0), grad, X, G)
 
     # Store first res to X and G
-    X.append(x)
+    X.append(x0)
     G.append(grad)
 
     # For now the free variables at the cauchy points is an empty set
