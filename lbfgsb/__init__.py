@@ -33,6 +33,17 @@ Additional utilitairy functions to work with inputs or outputs.
 
     extract_hess_inv_diag
 
+Initial gradient scalers
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+Functions to scale the initial gradient (impacts the optimization).
+
+.. autosummary::
+   :toctree: _autosummary
+
+    get_gradient_projection_unit_scaling
+
+
 Benchmark functions
 ^^^^^^^^^^^^^^^^^^^
 
@@ -110,7 +121,7 @@ from lbfgsb.benchmarks import (
     styblinski_tang_grad,
 )
 from lbfgsb.main import minimize_lbfgsb
-from lbfgsb.utils import extract_hess_inv_diag
+from lbfgsb.utils import extract_hess_inv_diag, get_gradient_projection_unit_scaling
 
 __all__ = [
     "minimize_lbfgsb",
@@ -141,4 +152,5 @@ __all__ = [
     "scalar_function",
     "subspacemin",
     "IS_CHECK_FACTORIZATION",
+    "get_gradient_projection_unit_scaling",
 ]
