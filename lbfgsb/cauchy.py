@@ -152,7 +152,11 @@ def get_cauchy_point(
     x_cp: NDArrayFloat = x.copy()
 
     # To define the breakpoints in each coordinate direction, we compute
-    t: NDArrayFloat = np.where(grad < 0, (x - ub) / grad, (x - lb) / grad)
+    t: NDArrayFloat = np.zeros_like(grad)
+    mask = grad != 0
+    t[mask] = np.where(
+        grad[mask] < 0, (x - ub)[mask] / grad[mask], (x - lb)[mask] / grad[mask]
+    )
     t[grad == 0] = np.inf
 
     # used to store the Cauchy direction `P(x-tg)-x`.
