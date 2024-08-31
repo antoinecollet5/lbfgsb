@@ -35,6 +35,7 @@ from typing import Deque, Optional, Tuple
 import numpy as np
 import scipy as sp
 
+from lbfgsb._config import IS_CHECK_FACTORIZATION
 from lbfgsb.types import NDArrayFloat
 
 
@@ -278,12 +279,16 @@ def update_lbfgs_matrices(
         mats.invMfactors = form_invMfactors(mats.theta, STS, mats.L, mats.D)
 
         # Test the factorization on the fly.
-        np.testing.assert_allclose(
-            mats.invMfactors[0] @ mats.invMfactors[1],
-            np.hstack(
-                [np.vstack([-mats.D, mats.L]), np.vstack([mats.L.T, mats.theta * STS])]
-            ),
-        )
+        if IS_CHECK_FACTORIZATION:
+            np.testing.assert_allclose(
+                mats.invMfactors[0] @ mats.invMfactors[1],
+                np.hstack(
+                    [
+                        np.vstack([-mats.D, mats.L]),
+                        np.vstack([mats.L.T, mats.theta * STS]),
+                    ]
+                ),
+            )
 
     return mats
 
