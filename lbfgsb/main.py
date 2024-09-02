@@ -500,7 +500,9 @@ def minimize_lbfgsb(
             ftol_linesearch,
             gtol_linesearch,
             xtol_linesearch,
-            maxls,
+            # The maximum number of function evaluation in linesearch must take into
+            # account maxfun and the number of call already performed.
+            min(maxls, maxfun - sf.nfev),
             iprint,
             logger,
         )
