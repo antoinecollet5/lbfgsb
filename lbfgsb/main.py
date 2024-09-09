@@ -356,7 +356,7 @@ def minimize_lbfgsb(
         jac=jac,
         args=args,
         epsilon=eps,
-        bounds=bounds,
+        bounds=(lb, ub),
         finite_diff_rel_step=finite_diff_rel_step,
     )
 
