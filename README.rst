@@ -33,6 +33,7 @@ In this context, the objectives of this code are as follows:
 - offer totally free code, including for commercial use, thanks to the MIT license;
 - garantee efficient code, with the number of calls to the objective function and gradient at least as low as in the reference implementation, and without drastically increasing memory consumption or computation time, thanks to the use of numpy and vectorization;
 - add relevant stopping criteria;
+- add the possibility to restart the solver from a checkpoint;
 - add the possibility of modifying on-the-fly the gradient sequences stored in memory, an essential mechanism for the automatic and adaptive weighting of a possible regularization term, See (TODO). This is one of the initial motivation;
 - use a logging system rather than prints, for better integration within complex apps.
 

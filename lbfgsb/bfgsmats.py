@@ -71,7 +71,7 @@ class LBFGSB_MATRICES:
         Parameters
         ----------
         n : int
-            Number of adjuted variables.
+            Number of adjusted variables.
         """
         self.S: NDArrayFloat = np.zeros([n, 1])
         self.Y: NDArrayFloat = np.zeros([n, 1])

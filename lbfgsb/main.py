@@ -113,6 +113,7 @@ def minimize_lbfgsb(
         ]
     ] = None,
     bounds: Optional[NDArrayFloat] = None,
+    checkpoint: Optional[OptimizeResult] = None,
     maxcor: int = 10,
     ftarget: Optional[Union[float, Callable[[], float]]] = None,
     ftol: float = 1e-5,
@@ -188,6 +189,18 @@ def minimize_lbfgsb(
             1. Instance of `Bounds` class.
             2. Sequence of ``(min, max)`` pairs for each element in `x`. None
                is used to specify no bound.
+    checkpoint: Optional[OptimizeResult]
+        OptimizeResult instance. This parameter allow to pass the output of a previous
+        `minimize_lbfgsb` run (a 'checkpoint') and restart the solver without losing
+        the sequence of adjusted values and associated gradients (hence the
+        approximation of the inverse Hessian). The last objective function and
+        associated gradient is also used. Of course the objective function definition
+        must remain the same between the two optimization rounds.
+        It can be useful if the optimization has been stopped too early,
+        if some stop criteria or other parameters must be changed (e.g., `maxcor`
+        or `ftol`) or if some scaling must be performed before starting L-BFGS-B. It
+        avoids recalculating some expensive objective functions and gradients.
+        This is a unique feature among L-BFGS-B implementations. The default is None.
     maxcor : int
         The maximum number of variable metric corrections used to
         define the limited memory matrix. (The limited memory BFGS
@@ -341,10 +354,7 @@ def minimize_lbfgsb(
         np.finfo(float).eps, n, maxcor, count_var_at_bounds(x, lb, ub), iprint
     )
 
-    # Deque = similar to list but with faster operations to remove and add
-    # values to extremities
-    X: Deque[NDArrayFloat] = deque()
-    G: Deque[NDArrayFloat] = deque()
+    X, G = initialize_X_and_G(x, checkpoint, maxcor)
 
     # Initialization of the matrices
     mats = LBFGSB_MATRICES(n)
@@ -360,8 +370,16 @@ def minimize_lbfgsb(
         finite_diff_rel_step=finite_diff_rel_step,
     )
 
-    # First evaluation of the objective function
-    f0 = sf.fun(x)
+    # restore the number of iterations and objective function evaluation
+    if checkpoint is not None:
+        sf.nfev = checkpoint.nfev
+        sf.ngev = checkpoint.njev
+
+    # First evaluation of the objective function if no checkpoint provided
+    if checkpoint is None:
+        f0 = sf.fun(x)
+    else:
+        f0 = checkpoint.fun
 
     # potential update of stop criterion
     if ftarget is not None:
@@ -380,30 +398,40 @@ def minimize_lbfgsb(
     # Create an internal state instance
     istate = InternalState()
 
+    if checkpoint is not None:
+        istate.nit = checkpoint.nit
+
     # early check of stop criterion -> Extreme case in which x0 satisfies the
     # criterion, then no optimization is needed and one does not need to compute
     # anything else.
     if is_f0_target_reached(f0 / sf.scaling_factor, _ftarget, istate):
         # leave the optimization routine
-        X.append(x)
-        G.append(np.zeros_like(x))
-        return OptimizeResult(
-            fun=f0,
-            jac=G[0],
-            nfev=sf.nfev,
-            njev=sf.ngev,
-            nit=istate.nit,
-            status=istate.warnflag,
-            message=istate.task_str,
-            x=x,
-            success=istate.is_success,
-            hess_inv=LbfgsInvHessProduct(
-                np.diff(np.array(X), axis=0), np.diff(np.array(G), axis=0)
-            ),
-        )
+        if checkpoint is None:
+            if len(X) == 0:
+                X.append(x)
+                G.append(np.zeros_like(x))
+            return OptimizeResult(
+                fun=f0,
+                jac=G[0],
+                nfev=sf.nfev,
+                njev=sf.ngev,
+                nit=istate.nit,
+                status=istate.warnflag,
+                message=istate.task_str,
+                x=x,
+                success=istate.is_success,
+                hess_inv=LbfgsInvHessProduct(
+                    np.diff(np.array(X), axis=0), np.diff(np.array(G), axis=0)
+                ),
+            )
+        else:
+            return checkpoint
 
-    # Compute the first gradient
-    grad = sf.grad(x)
+    # Compute the first gradient if no checkpoint provided
+    if checkpoint is None:
+        grad = sf.grad(x)
+    else:
+        grad = checkpoint.jac
 
     # scale the initial gradient and consequently the objective function
     # this is optional and needs to be investigated and documented.
@@ -425,9 +453,22 @@ def minimize_lbfgsb(
     if update_fun_def is not None:
         f0, f0_old, grad, G = update_fun_def(x, f0, copy.copy(f0), grad, X, G)
 
-    # Store first res to X and G
-    X.append(np.copy(x))
-    G.append(grad)
+    if len(X) > 0:
+        # only happens if checkpoint is provided (L-BFGS-B restart)
+        mats = update_lbfgs_matrices(
+            x.copy(),  # copy otherwise x might be changed in X when updated
+            grad,
+            X,
+            G,
+            maxcor,
+            mats,
+            False,
+            eps_SY,
+        )
+    else:
+        # Store first res to X and G
+        X.append(np.copy(x))
+        G.append(grad)
 
     # For now the free variables at the cauchy points is an empty set
     free_vars = np.array([], dtype=np.int_)
@@ -453,8 +494,6 @@ def minimize_lbfgsb(
             logger.info(f"ITERATION {istate.nit + 1}\n")
 
         f0_old = copy.copy(f0)
-        # x = x.copy()
-        # grad = grad.copy()
 
         # find cauchy point
         x_cp, c = get_cauchy_point(
@@ -530,9 +569,9 @@ def minimize_lbfgsb(
 
             if update_fun_def is None:
                 if is_f0_target_reached(f0 / sf.scaling_factor, _ftarget, istate):
-                    istate.is_success = True
+                    break  # the while loop
                 elif is_f0_min_change_reached(f0, f0_old, ftol, istate):
-                    istate.is_success = True
+                    break  # the while loop
 
             # perform a potential update of the objective function definition and
             # upgrade the gradient and the past sequence of gradients accordingly
@@ -542,11 +581,11 @@ def minimize_lbfgsb(
                 # Check stop criterion: minimum relative change in the
                 # objective function
                 if is_f0_min_change_reached(f0, f0_old, ftol, istate):
-                    istate.is_success = True
+                    break  # the while loop
 
                 # Check stop criterion: minimum objective function value
                 elif is_f0_target_reached(f0 / sf.scaling_factor, _ftarget, istate):
-                    istate.is_success = True
+                    break  # the while loop
 
                 # We must check if the updated G satisfy the strong wolfe condition
                 X, G = make_X_and_G_respect_strong_wolfe(X, G, eps_SY, logger)
@@ -607,7 +646,7 @@ def minimize_lbfgsb(
         istate.task_str = "CONVERGENCE: NORM_OF_PROJECTED_GRADIENT_<=_PGTOL"
         istate.is_success = True
         istate.warnflag = 1
-    if istate.nit == maxiter:
+    elif istate.nit == maxiter:
         istate.task_str = "STOP: TOTAL NO. of ITERATIONS REACHED LIMIT"
         istate.is_success = True
         istate.warnflag = 1
@@ -632,6 +671,73 @@ def minimize_lbfgsb(
             np.atleast_2d(np.diff(np.array(G), axis=0)),
         ),
     )
+
+
+def initialize_X_and_G(
+    x: NDArrayFloat, checkpoint: Optional[OptimizeResult], maxcor: int
+) -> Tuple[Deque[NDArrayFloat], Deque[NDArrayFloat]]:
+    """
+    Initialize the sequence of adjusted values and associated gradients.
+
+    This routine is mainly dedicated to restore the sequence from a checkpoint.
+    The sequence is stored in the `hess_inv` attribute as "sk" and "yk" which
+    are differences, e.g., sk = np.atleast_2d(np.diff(np.array(X), axis=0)).
+
+    Parameters
+    ----------
+    x : NDArrayFloat
+        Adjusted values.
+    checkpoint : Optional[OptimizeResult]
+        Optional checkpoint (see solver restart).
+    maxcor : int
+        Maximum number of corrections stored.
+
+    Returns
+    -------
+    Tuple[Deque[NDArrayFloat], Deque[NDArrayFloat]]
+        X and G.
+    """
+    # Initialize X and G
+    # Deque = similar to list but with faster operations to remove and add
+    # values to extremities
+    X: Deque[NDArrayFloat] = deque()
+    G: Deque[NDArrayFloat] = deque()
+
+    # if it is a L-BFGS-B restart (checkpoint is provided), then X and G are restored
+    # from x, jac and the sequence of differences sk and yk stored in the inverse
+    # Hessian approximation instance (LbfgsInvHessProduct).
+    if checkpoint is None:
+        return X, G
+
+    # x0 and checkpoint.x should be the same otherwisee there is an issue
+    try:
+        np.testing.assert_equal(x, checkpoint.x)
+    except AssertionError as e:
+        raise ValueError(
+            "When 'checkpoint' is provided (L-BFGS-B restart), x0 and checkpoint.x"
+            " should be equal!"
+        ) from e
+    n_corrs, n = checkpoint.hess_inv.sk.shape
+    if n_corrs == 0:
+        return X, G
+
+    if n != x.size:
+        raise ValueError(
+            f"The size of correction vector ({n}) does"
+            f" not match the size of x ({x.size})!"
+        )
+    # restore the past X and G
+    for x, g in zip(
+        checkpoint.x - np.cumsum(checkpoint.hess_inv.sk),
+        checkpoint.jac - np.cumsum(checkpoint.hess_inv.yk),
+    ):
+        if len(X) > maxcor + 1:
+            X.popleft()
+            G.popleft()
+        X.append(x)
+        G.append(g)
+    # at this point, X and G do not have x nor jac -> it is added a bit later
+    return X, G
 
 
 def is_f0_min_change_reached(
