@@ -17,7 +17,7 @@ codespell>=2.1.0
 ruff
 
 # docs
-sphinx>=5 # jupyter_sphinx requires sphinx>=2
+sphinx~=7 # jupyter_sphinx requires sphinx>=2
 nbsphinx==0.8.10
 nbsphinx-link
 jupyter_sphinx>=0.3.2
