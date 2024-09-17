@@ -17,7 +17,7 @@ codespell>=2.1.0
 ruff
 
 # docs
-sphinx~=7 # jupyter_sphinx requires sphinx>=2
+sphinx>=5.0.0, <8.0.0 # the upper bound is because of a bug in nbsphinx-link.
 nbsphinx==0.8.10
 nbsphinx-link
 jupyter_sphinx>=0.3.2
