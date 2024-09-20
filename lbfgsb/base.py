@@ -66,6 +66,12 @@ def get_bounds(
     if (lb > ub).any():
         raise ValueError("One of the lower bounds is greater than an upper bound.")
 
+    if (x0 < lb).any() or (x0 > ub).any():
+        raise ValueError(
+            f"There are {np.count_nonzero(x0 < lb)} values violating the lower bounds"
+            f" and {np.count_nonzero(x0 > ub)} values violating the upper bounds!"
+        )
+
     # initial vector must lie within the bounds. Otherwise ScalarFunction and
     # approx_derivative will cause problems
     return lb, ub

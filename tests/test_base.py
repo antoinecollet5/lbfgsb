@@ -47,6 +47,26 @@ from lbfgsb.types import NDArrayFloat
                 match="One of the lower bounds is greater than an upper bound.",
             ),
         ],
+        [np.array([1e-10]), np.array([(1e-10, 1000000)]), does_not_raise()],
+        [np.array([1e6]), np.array([(1e-10, 1000000)]), does_not_raise()],
+        [
+            np.array([1e-15]),
+            np.array([(1e-10, 1000000)]),
+            pytest.raises(
+                ValueError,
+                match="There are 1 values violating the lower bounds and"
+                " 0 values violating the upper bounds!",
+            ),
+        ],
+        [
+            np.array([1e7]),
+            np.array([(1e-10, 1000000)]),
+            pytest.raises(
+                ValueError,
+                match="There are 0 values violating the lower bounds "
+                "and 1 values violating the upper bounds!",
+            ),
+        ],
     ),
 )
 def test_get_bounds(x0, bounds, expected_exception) -> None:
