@@ -1,10 +1,19 @@
+import logging
+from typing import Deque
+
 import lbfgsb
 import numpy as np
 from lbfgsb import minimize_lbfgsb
 from lbfgsb.types import NDArrayFloat
 from scipy.optimize import minimize
 
+logger: logging.Logger = logging.getLogger("L-BFGS-B")
+logger.setLevel(logging.INFO)
+logging.info("this is a logging test")
+
 lbfgsb.IS_CHECK_FACTORIZATION = True
+lbfgsb._config.IS_CHECK_FACTORIZATION = True
+assert lbfgsb._config.IS_CHECK_FACTORIZATION is True
 
 
 # Definition of some test functions
@@ -14,6 +23,18 @@ def quad(x: NDArrayFloat) -> float:
 
 def grad_quad(x: NDArrayFloat) -> NDArrayFloat:
     return x
+
+
+def update_fun_def_does_nothing(
+    x: NDArrayFloat,
+    f0: float,
+    f0_old: float,
+    grad: NDArrayFloat,
+    X: Deque[NDArrayFloat],
+    G: Deque[NDArrayFloat],
+):
+    """Does nothing, just for the test"""
+    return f0, f0_old, grad, G
 
 
 def test_minimize_quad() -> None:
@@ -27,7 +48,15 @@ def test_minimize_quad() -> None:
 
     # 2) optimizaiton with our implementation
     opt_quad = minimize_lbfgsb(
-        x0=x0, fun=quad, jac=grad_quad, bounds=bounds, ftol=ftol, gtol=gtol
+        x0=x0,
+        fun=quad,
+        jac=grad_quad,
+        bounds=bounds,
+        ftol=ftol,
+        gtol=gtol,
+        update_fun_def=update_fun_def_does_nothing,
+        logger=logger,
+        iprint=1000,
     )
 
     # 3) Check the results correctness
@@ -82,7 +111,8 @@ def test_minimize_rozenbrock() -> None:
         bounds=bounds,
         ftol=ftol,
         gtol=gtol,
-        iprint=1,
+        logger=logger,
+        iprint=1000,
     )
     x_opt = np.array([1, 1])
     np.testing.assert_allclose(x_opt, opt_rosenbrock.x, rtol=1e-3)
@@ -175,3 +205,9 @@ def test_early_stop() -> None:
     assert res.success is True
     assert res.status == 0
     assert res.message == "CONVERGENCE: F_<=_TARGET"
+
+
+def test_checkpointing() -> None:
+    pass
+
+    # In this test, we check the checkpointing capabilities

@@ -588,7 +588,7 @@ def minimize_lbfgsb(
                     break  # the while loop
 
                 # We must check if the updated G satisfy the strong wolfe condition
-                X, G = make_X_and_G_respect_strong_wolfe(X, G, eps_SY, logger)
+                X, G = make_X_and_G_respect_strong_wolfe(X, G, eps_SY, logger=logger)
 
             mats = update_lbfgs_matrices(
                 x.copy(),  # copy otherwise x might be changed in X when updated
