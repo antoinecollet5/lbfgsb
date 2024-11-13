@@ -250,13 +250,17 @@ def prepare_scalar_function(
         # rel_step
         epsilon = None
         grad = jac
-    else:
+    elif jac is None:
         # default (jac is None) is to do 2-point finite differences with
         # absolute step size. ScalarFunction has to be provided an
         # epsilon value that is not None to use absolute steps. This is
         # normally the case from most _minimize* methods.
         grad = "2-point"
         epsilon = epsilon
+    else:
+        raise ValueError(
+            "jac must be callable, None or among ['2-point', '3-point', 'cs']."
+        )
 
     if bounds is None:
         bounds = (-np.inf, np.inf)
