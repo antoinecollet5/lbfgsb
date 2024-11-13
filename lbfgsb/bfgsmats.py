@@ -73,6 +73,8 @@ class LBFGSB_MATRICES:
         n : int
             Number of adjusted variables.
         """
+        if n < 1:
+            raise ValueError("n must be an integer > 0.")
         self.S: NDArrayFloat = np.zeros([n, 1])
         self.Y: NDArrayFloat = np.zeros([n, 1])
         self.D: NDArrayFloat = np.zeros([n, 1])
