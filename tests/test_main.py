@@ -1,7 +1,6 @@
 import logging
 from typing import Deque
 
-import lbfgsb
 import numpy as np
 from lbfgsb import minimize_lbfgsb
 from lbfgsb.types import NDArrayFloat
@@ -10,10 +9,6 @@ from scipy.optimize import minimize
 logger: logging.Logger = logging.getLogger("L-BFGS-B")
 logger.setLevel(logging.INFO)
 logging.info("this is a logging test")
-
-lbfgsb.IS_CHECK_FACTORIZATION = True
-lbfgsb._config.IS_CHECK_FACTORIZATION = True
-assert lbfgsb._config.IS_CHECK_FACTORIZATION is True
 
 
 # Definition of some test functions
@@ -57,6 +52,7 @@ def test_minimize_quad() -> None:
         update_fun_def=update_fun_def_does_nothing,
         logger=logger,
         iprint=1000,
+        is_check_factorization=True,
     )
 
     # 3) Check the results correctness
@@ -113,6 +109,7 @@ def test_minimize_rozenbrock() -> None:
         gtol=gtol,
         logger=logger,
         iprint=1000,
+        is_check_factorization=True,
     )
     x_opt = np.array([1, 1])
     np.testing.assert_allclose(x_opt, opt_rosenbrock.x, rtol=1e-3)
@@ -197,7 +194,9 @@ def test_early_stop() -> None:
     """Early stop because of target stop criterion."""
     # 4) optimizaiton with scipy implementation
     x0 = np.array([2.5, -1.3])
-    res = minimize_lbfgsb(x0=x0, fun=quad, jac=grad_quad, ftarget=1000)
+    res = minimize_lbfgsb(
+        x0=x0, fun=quad, jac=grad_quad, ftarget=1000, is_check_factorization=True
+    )
 
     assert res.nfev == 1
     assert res.njev == 0

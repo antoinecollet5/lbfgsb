@@ -2,7 +2,6 @@ import logging
 from contextlib import nullcontext as does_not_raise
 from typing import Deque, Tuple
 
-import lbfgsb
 import numpy as np
 import pytest
 from lbfgsb.bfgsmats import (
@@ -12,8 +11,6 @@ from lbfgsb.bfgsmats import (
     update_X_and_G,
 )
 from lbfgsb.types import NDArrayFloat
-
-lbfgsb.IS_CHECK_FACTORIZATION = True
 
 logger: logging.Logger = logging.getLogger("L-BFGS-B")
 logger.setLevel(logging.INFO)

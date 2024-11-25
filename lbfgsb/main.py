@@ -20,6 +20,8 @@ Additional features
 --------------------
 Explain about objective function update on the fly.
 TODO: point to the doc of the main routine.
+TODO:
+https://towardsdatascience.com/numerical-optimization-based-on-the-l-bfgs-method-f6582135b0ca
 
 References
 ----------
@@ -134,6 +136,7 @@ def minimize_lbfgsb(
         Callable[[NDArrayFloat, NDArrayFloat, NDArrayFloat, NDArrayFloat], float]
     ] = None,
     logger: Optional[logging.Logger] = None,
+    is_check_factorization: bool = False,
 ) -> OptimizeResult:
     r"""
     Solves bound constrained optimization problems by using the compact formula
@@ -321,6 +324,8 @@ def minimize_lbfgsb(
     logger: Optional[Logger], optional
         :class:`logging.Logger` instance. If None, nothing is displayed, no matter the
         value of `iprint`, by default None.
+    is_check_factorization: bool
+        For development purposes only, leave to False. The default is False.
 
     Returns
     -------
@@ -462,8 +467,9 @@ def minimize_lbfgsb(
             G,
             maxcor,
             mats,
-            False,
-            eps_SY,
+            is_force_update=False,
+            eps=eps_SY,
+            is_check_factorization=is_check_factorization,
         )
     else:
         # Store first res to X and G
@@ -522,6 +528,7 @@ def minimize_lbfgsb(
             lb,
             ub,
             mats,
+            is_check_factorizations=is_check_factorization,
         )
         d = xbar - x
 
@@ -597,8 +604,9 @@ def minimize_lbfgsb(
                 G,
                 maxcor,
                 mats,
-                False,
-                eps_SY,
+                is_force_update=False,
+                eps=eps_SY,
+                is_check_factorization=is_check_factorization,
             )
 
             # callback is a user defined mechanism to stop optimization

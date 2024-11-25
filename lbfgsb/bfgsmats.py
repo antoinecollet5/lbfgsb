@@ -35,7 +35,6 @@ from typing import Deque, Optional, Tuple
 import numpy as np
 import scipy as sp
 
-from lbfgsb._config import IS_CHECK_FACTORIZATION
 from lbfgsb.types import NDArrayFloat
 
 
@@ -186,6 +185,7 @@ def update_lbfgs_matrices(
     mats: LBFGSB_MATRICES,
     is_force_update: bool,
     eps: float = 2.2e-16,
+    is_check_factorization: bool = False,
 ) -> LBFGSB_MATRICES:
     r"""
     Update lists S and Y, and form the L-BFGS Hessian approximation thet, W and M.
@@ -218,6 +218,8 @@ def update_lbfgs_matrices(
     eps : float, optional
         Positive stability parameter for accepting current step for updating.
         By default 2.2e-16.
+    is_check_factorization: bool
+        Whether to check the cholesky actorization of M. The default is False.
 
     Returns
     -------
@@ -281,7 +283,7 @@ def update_lbfgs_matrices(
         mats.invMfactors = form_invMfactors(mats.theta, STS, mats.L, mats.D)
 
         # Test the factorization on the fly.
-        if IS_CHECK_FACTORIZATION:
+        if is_check_factorization:
             np.testing.assert_allclose(
                 mats.invMfactors[0] @ mats.invMfactors[1],
                 np.hstack(

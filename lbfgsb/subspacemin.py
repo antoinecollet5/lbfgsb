@@ -39,7 +39,6 @@ import numpy as np
 import scipy as sp
 from scipy.sparse import lil_matrix, spmatrix
 
-from lbfgsb._config import IS_CHECK_FACTORIZATION
 from lbfgsb.bfgsmats import LBFGSB_MATRICES, bmv
 from lbfgsb.types import NDArrayFloat, NDArrayInt
 
@@ -309,6 +308,7 @@ def subspace_minimization(
     lb: NDArrayFloat,
     ub: NDArrayFloat,
     mats: LBFGSB_MATRICES,
+    is_check_factorizations: bool = False,
 ) -> NDArrayFloat:
     r"""
     Computes an approximate solution of the subspace problem.
@@ -388,10 +388,10 @@ def subspace_minimization(
 
     # Factorization of M^{-1}(I - 1/theta M WT Z @ ZT @ W))
     if mats.use_factor:
-        K = form_k(Z, A, WTZ, mats, is_assert_correct=IS_CHECK_FACTORIZATION)
+        K = form_k(Z, A, WTZ, mats, is_assert_correct=is_check_factorizations)
         # The assertion includes minor overhead
         LK: Optional[NDArrayFloat] = factorize_k(
-            K, is_assert_correct=IS_CHECK_FACTORIZATION
+            K, is_assert_correct=is_check_factorizations
         )
     else:
         LK = None
