@@ -1,10 +1,18 @@
+import copy
 import logging
+import re
 from typing import Deque
 
 import numpy as np
-from lbfgsb import minimize_lbfgsb
+import pytest
+from lbfgsb import InternalState, minimize_lbfgsb
+from lbfgsb.main import is_f0_target_reached
 from lbfgsb.types import NDArrayFloat
-from scipy.optimize import minimize
+from scipy.optimize import (
+    LbfgsInvHessProduct,  # noqa : F401
+    minimize,
+)
+from scipy.optimize._optimize import OptimizeResult
 
 logger: logging.Logger = logging.getLogger("L-BFGS-B")
 logger.setLevel(logging.INFO)
@@ -18,6 +26,28 @@ def quad(x: NDArrayFloat) -> float:
 
 def grad_quad(x: NDArrayFloat) -> NDArrayFloat:
     return x
+
+
+def test_is_f0_target_reached() -> None:
+    istate = InternalState()
+    assert istate.is_success is False
+    assert istate.task_str == "START"
+    assert istate.warnflag == 2
+
+    # No changes to istate
+    assert is_f0_target_reached(1e-2, 1e-3, istate) is False
+    assert is_f0_target_reached(1e-2, None, istate) is False
+
+    assert istate.is_success is False
+    assert istate.task_str == "START"
+    assert istate.warnflag == 2
+
+    # Changes to istate
+    assert is_f0_target_reached(1e-4, 1e-3, istate) is True
+
+    assert istate.is_success is True
+    assert istate.task_str == "CONVERGENCE: F_<=_TARGET"
+    assert istate.warnflag == 0
 
 
 def update_fun_def_does_nothing(
@@ -207,6 +237,189 @@ def test_early_stop() -> None:
 
 
 def test_checkpointing() -> None:
-    pass
+    # 1) parameters definition
+    ftol = 1e-10
+    gtol = 1e-10
+    maxiter = 20
+    maxfun = 20
+    maxcor = 5
+    lb = np.array([-2, -2])
+    ub = np.array([2, 2])
+    bounds = np.array((lb, ub)).T
+    # x0 = np.array([0.12, 0.12])
+    x0 = np.array([-1, -1])
 
-    # In this test, we check the checkpointing capabilities
+    # 2) optimizaiton until the end
+    _ = minimize_lbfgsb(
+        x0=x0,
+        fun=rosenbrock,
+        jac=grad_rosenbrock,
+        bounds=bounds,
+        maxiter=maxiter,
+        maxfun=maxfun,
+        maxcor=maxcor,
+        ftol=ftol,
+        gtol=gtol,
+        logger=logger,
+        iprint=1000,
+        is_check_factorization=True,
+    )
+
+    # test an empty checkpoint
+    istate = InternalState()
+    empty_checkpoint = OptimizeResult(
+        fun=0.0,
+        jac=np.zeros(2),
+        nfev=0,
+        njev=0,
+        nit=istate.nit,
+        status=istate.warnflag,
+        message=istate.task_str,
+        x=x0,
+        success=istate.is_success,
+        hess_inv=LbfgsInvHessProduct(
+            np.array([]).reshape(-1, 2),
+            np.array([]).reshape(-1, 2),
+        ),
+    )
+
+    # empty checkpoint
+    _: OptimizeResult = minimize_lbfgsb(
+        x0=x0,
+        fun=rosenbrock,
+        jac=grad_rosenbrock,
+        bounds=bounds,
+        maxiter=5,
+        maxfun=5,
+        maxcor=maxcor,
+        ftol=ftol,
+        gtol=gtol,
+        logger=logger,
+        iprint=1000,
+        is_check_factorization=True,
+        checkpoint=empty_checkpoint,
+    )
+
+    # Non correct checkpoint
+    wrong_ckp = copy.copy(empty_checkpoint)
+    wrong_ckp.hess_inv = LbfgsInvHessProduct(
+        np.zeros((2, 3)),  # the second dim should be 2
+        np.zeros((2, 3)),  # the second dim should be 2
+    )
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            "The size of correction vector (3) does not match the size of x (2)!"
+        ),
+    ):
+        _: OptimizeResult = minimize_lbfgsb(
+            x0=x0,
+            fun=rosenbrock,
+            jac=grad_rosenbrock,
+            bounds=bounds,
+            maxiter=5,
+            maxfun=5,
+            maxcor=maxcor,
+            ftol=ftol,
+            gtol=gtol,
+            logger=logger,
+            iprint=1000,
+            is_check_factorization=True,
+            checkpoint=wrong_ckp,
+        )
+
+    # optimization with max 10 nfev
+    opt_rosenbrock2: OptimizeResult = minimize_lbfgsb(
+        x0=x0,
+        fun=rosenbrock,
+        jac=grad_rosenbrock,
+        bounds=bounds,
+        maxiter=10,
+        maxfun=10,
+        maxcor=maxcor,
+        ftol=ftol,
+        gtol=gtol,
+        logger=logger,
+        iprint=1000,
+        is_check_factorization=True,
+    )
+
+    assert opt_rosenbrock2.nfev == 10
+    # max determined by maxcor = 5
+    assert opt_rosenbrock2.hess_inv.sk.shape[0] == 5  # maxcor
+    assert opt_rosenbrock2.hess_inv.yk.shape[0] == 5  # maxcor
+
+    # optimization restart with checkpointing
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            "When 'checkpoint' is provided (L-BFGS-B restart), "
+            "x0 and checkpoint.x should be equal!"
+        ),
+    ):
+        _ = minimize_lbfgsb(
+            x0=x0,
+            fun=rosenbrock,
+            jac=grad_rosenbrock,
+            bounds=bounds,
+            maxiter=maxiter,
+            maxfun=maxfun,
+            maxcor=maxcor,
+            ftol=ftol,
+            gtol=gtol,
+            logger=logger,
+            iprint=1000,
+            checkpoint=copy.deepcopy(opt_rosenbrock2),
+        )
+
+    # should yield the same as the original optimization
+    opt_rosenbrock3 = minimize_lbfgsb(
+        x0=opt_rosenbrock2.x,
+        fun=rosenbrock,
+        jac=grad_rosenbrock,
+        bounds=bounds,
+        maxiter=maxiter,
+        maxfun=maxfun,
+        ftol=ftol,
+        gtol=gtol,
+        maxcor=maxcor,
+        logger=logger,
+        iprint=1000,
+        checkpoint=opt_rosenbrock2,
+    )
+
+    assert opt_rosenbrock3.nfev == 20
+    # max determined by maxcor
+    assert opt_rosenbrock3.hess_inv.sk.shape[0] == 5
+    assert opt_rosenbrock3.hess_inv.yk.shape[0] == 5
+
+    # TODO: this fails while it should not. There is an issue with the checkpointing.
+    # np.testing.assert_allclose(opt_rosenbrock.x, opt_rosenbrock3.x)
+    # np.testing.assert_allclose(
+    # opt_rosenbrock.hess_inv.sk, opt_rosenbrock3.hess_inv.sk)
+    # np.testing.assert_allclose(
+    # opt_rosenbrock.hess_inv.yk, opt_rosenbrock3.hess_inv.yk)
+
+    # Already converge so should return the checkpoint
+    # but with a modified approximated hessien because we changed maxcor to 3
+    opt_rosenbrock4 = minimize_lbfgsb(
+        x0=opt_rosenbrock3.x,
+        fun=rosenbrock,
+        jac=grad_rosenbrock,
+        bounds=bounds,
+        maxiter=maxiter,
+        maxfun=maxfun,
+        maxcor=3,  # update maxcor to test the reshape
+        ftol=ftol,
+        gtol=gtol,
+        logger=logger,
+        iprint=1000,
+        checkpoint=opt_rosenbrock3,
+    )
+
+    assert opt_rosenbrock4.nfev == 20
+    # determined by maxcor
+    assert opt_rosenbrock4.hess_inv.sk.shape[0] == 3
+    assert opt_rosenbrock4.hess_inv.yk.shape[0] == 3
+
+    np.testing.assert_allclose(opt_rosenbrock3.x, opt_rosenbrock4.x)

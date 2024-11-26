@@ -119,7 +119,7 @@ from lbfgsb.benchmarks import (
     styblinski_tang,
     styblinski_tang_grad,
 )
-from lbfgsb.main import minimize_lbfgsb
+from lbfgsb.main import InternalState, minimize_lbfgsb
 from lbfgsb.utils import extract_hess_inv_diag, get_gradient_projection_unit_scaling
 
 __all__ = [
@@ -151,4 +151,5 @@ __all__ = [
     "scalar_function",
     "subspacemin",
     "get_gradient_projection_unit_scaling",
+    "InternalState",
 ]

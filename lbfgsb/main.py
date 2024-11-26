@@ -736,10 +736,10 @@ def initialize_X_and_G(
         )
     # restore the past X and G
     for x, g in zip(
-        checkpoint.x - np.cumsum(checkpoint.hess_inv.sk),
-        checkpoint.jac - np.cumsum(checkpoint.hess_inv.yk),
+        checkpoint.x - np.cumsum(checkpoint.hess_inv.sk, axis=0),
+        checkpoint.jac - np.cumsum(checkpoint.hess_inv.yk, axis=0),
     ):
-        if len(X) > maxcor + 1:
+        if len(X) > maxcor:
             X.popleft()
             G.popleft()
         X.append(x)
