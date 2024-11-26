@@ -10,9 +10,9 @@ from lbfgsb.main import is_f0_target_reached
 from lbfgsb.types import NDArrayFloat
 from scipy.optimize import (
     LbfgsInvHessProduct,  # noqa : F401
+    OptimizeResult,
     minimize,
 )
-from scipy.optimize._optimize import OptimizeResult
 
 logger: logging.Logger = logging.getLogger("L-BFGS-B")
 logger.setLevel(logging.INFO)
