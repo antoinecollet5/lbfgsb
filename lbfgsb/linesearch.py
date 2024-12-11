@@ -318,7 +318,7 @@ def line_search(
 
     if iprint >= 99 and logger is not None and steplength is not None:
         logger.info(
-            f"LINE SEARCH {iter} times; norm of step = "
+            f"LINE SEARCH {_iter} times; norm of step = "
             f"{steplength * np.linalg.norm(d)}"
         )
 
