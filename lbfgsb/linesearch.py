@@ -305,7 +305,7 @@ def line_search(
         task = b"WARNING: dcsrch did not converge within max iterations"
 
     if steplength is not None:
-        if not np.isfinite(steplength):
+        if not np.isfinite(steplength) or steplength == 0.0:
             task = b"ERROR"
             return None
 

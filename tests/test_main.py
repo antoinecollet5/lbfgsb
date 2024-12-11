@@ -248,7 +248,7 @@ def test_abnormal_termination_linesearch(
     """Abnormal termination."""
 
     def func(x: NDArrayFloat) -> float:
-        return x + np.exp(-10 * x)
+        return np.sum(x + np.exp(-10 * x)).item()
 
     # result = minimize(func, x0=10, method='L-BFGS-B',
     #                 options={'maxls': 5, 'disp': 1})
