@@ -222,7 +222,6 @@ def test_minimize_beale() -> None:
 
 def test_early_stop() -> None:
     """Early stop because of target stop criterion."""
-    # 4) optimizaiton with scipy implementation
     x0 = np.array([2.5, -1.3])
     res = minimize_lbfgsb(
         x0=x0, fun=quad, jac=grad_quad, ftarget=1000, is_check_factorization=True
@@ -234,6 +233,34 @@ def test_early_stop() -> None:
     assert res.success is True
     assert res.status == 0
     assert res.message == "CONVERGENCE: F_<=_TARGET"
+
+
+@pytest.mark.parametrize(
+    "x0, expected_msg, is_success",
+    (
+        (np.array([-50]), "ABNORMAL_TERMINATION_IN_LNSRCH", False),
+        (np.array([2.5]), "CONVERGENCE: REL_REDUCTION_OF_F_<=_FTOL", True),
+    ),
+)
+def test_abnormal_termination_linesearch(
+    x0: NDArrayFloat, expected_msg: str, is_success
+) -> None:
+    """Abnormal termination."""
+
+    def func(x: NDArrayFloat) -> float:
+        return x + np.exp(-10 * x)
+
+    # result = minimize(func, x0=10, method='L-BFGS-B',
+    #                 options={'maxls': 5, 'disp': 1})
+
+    def jac(x: NDArrayFloat) -> NDArrayFloat:
+        return 1.0 - 10 * np.exp(-10 * x)
+
+    res = minimize_lbfgsb(
+        x0=x0, fun=func, jac=jac, maxls=5, is_check_factorization=True
+    )
+    assert res.message == expected_msg
+    assert res.success is is_success
 
 
 def test_checkpointing() -> None:
@@ -334,7 +361,7 @@ def test_checkpointing() -> None:
         fun=rosenbrock,
         jac=grad_rosenbrock,
         bounds=bounds,
-        maxiter=10,
+        maxiter=5,
         maxfun=10,
         maxcor=maxcor,
         ftol=ftol,
@@ -344,10 +371,11 @@ def test_checkpointing() -> None:
         is_check_factorization=True,
     )
 
-    assert opt_rosenbrock2.nfev == 10
+    assert opt_rosenbrock2.nfev == 8
     # max determined by maxcor = 5
     assert opt_rosenbrock2.hess_inv.sk.shape[0] == 5  # maxcor
     assert opt_rosenbrock2.hess_inv.yk.shape[0] == 5  # maxcor
+    assert opt_rosenbrock2.message == "STOP: TOTAL NO. of ITERATIONS REACHED LIMIT"
 
     # optimization restart with checkpointing
     with pytest.raises(
@@ -423,3 +451,63 @@ def test_checkpointing() -> None:
     assert opt_rosenbrock4.hess_inv.yk.shape[0] == 3
 
     np.testing.assert_allclose(opt_rosenbrock3.x, opt_rosenbrock4.x)
+
+    # Last test, we increase the maxiter and maxfun but the target provokes the stop
+    opt_rosenbrock5 = minimize_lbfgsb(
+        x0=opt_rosenbrock4.x,
+        fun=rosenbrock,
+        jac=grad_rosenbrock,
+        bounds=bounds,
+        maxiter=maxiter + 5,
+        maxfun=maxfun + 5,
+        ftarget=opt_rosenbrock4.fun + 1.0,
+        maxcor=3,  # update maxcor to test the reshape
+        ftol=ftol,
+        gtol=gtol,
+        logger=logger,
+        iprint=1000,
+        checkpoint=opt_rosenbrock4,
+    )
+
+    assert opt_rosenbrock5.nfev == 20
+    # determined by maxcor
+    assert opt_rosenbrock5.hess_inv.sk.shape[0] == 3
+    assert opt_rosenbrock5.hess_inv.yk.shape[0] == 3
+
+
+def test_user_callback() -> None:
+    # 1) parameters definition
+    ftol = 1e-10
+    gtol = 1e-10
+    maxiter = 20
+    maxfun = 20
+    maxcor = 5
+    lb = np.array([-2, -2])
+    ub = np.array([2, 2])
+    bounds = np.array((lb, ub)).T
+    # x0 = np.array([0.12, 0.12])
+    x0 = np.array([-1, -1])
+
+    def _callback(x: NDArrayFloat, opt: OptimizeResult) -> bool:
+        if opt.nfev > 5:
+            return True
+        return False
+
+    # 2) optimizaiton until the end
+    res = minimize_lbfgsb(
+        x0=x0,
+        fun=rosenbrock,
+        jac=grad_rosenbrock,
+        bounds=bounds,
+        maxiter=maxiter,
+        maxfun=maxfun,
+        maxcor=maxcor,
+        ftol=ftol,
+        gtol=gtol,
+        logger=logger,
+        iprint=1000,
+        is_check_factorization=True,
+        callback=_callback,
+    )
+
+    assert res.nfev == 7
