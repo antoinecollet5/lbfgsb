@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools>=42,<=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -17,9 +17,9 @@ keywords = [
     "Parameters estimation",
     "L-BFGS-B",
 ]
-license = "MIT"
+license = { file="LICENSE"}
 dependencies = [
-    "setuptools>=61.1.1",
+    "setuptools",
     "wheel",
     "numpy>=1.2",
     "scipy>=1.6.2",
