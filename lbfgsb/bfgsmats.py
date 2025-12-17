@@ -103,14 +103,14 @@ def bmv(
     Parameters
     ----------
     invMfactors : Tuple[NDArrayFloat, NDArrayFloat]
-        _description_
+        LU factorization of the inverse of the middle matrix M.
     v : NDArrayFloat
-        _description_
+        Vector with size 2m.
 
     Returns
     -------
     NDArrayFloat
-        _description_
+        Product of the 2m x 2m middle matrix with a vector v.
     """
     # PART I: solve [  D^(1/2)      O ] [ p1 ] = [ v1 ]
     #               [ -L*D^(-1/2)   J ] [ p2 ]   [ v2 ].
@@ -188,7 +188,7 @@ def update_lbfgs_matrices(
     is_check_factorization: bool = False,
 ) -> LBFGSB_MATRICES:
     r"""
-    Update lists S and Y, and form the L-BFGS Hessian approximation thet, W and M.
+    Update lists S and Y, and form the L-BFGS Hessian approximation.
 
     Instead of storing sk and yk, we store the gradients and the parameters.
 
@@ -320,12 +320,12 @@ def update_X_and_G(
     maxcor : int
         Maximum number of corrections stored (m).
     eps : float, optional
-        _description_, by default 2.2e-16
-
+        Positive stability parameter for accepting current step for updating.
+        By default 2.2e-16.
     Returns
     -------
     bool
-        _description_
+        True if the matrices have been updated, False otherwise.
     """
     if not is_update_X_and_G(xk, gk, X[-1], G[-1], eps):
         return False
@@ -364,8 +364,8 @@ def is_update_X_and_G(
     maxcor : int
         Maximum number of corrections stored (m).
     eps : float, optional
-        _description_, by default 2.2e-16
-
+        Positive stability parameter for accepting current step for updating.
+        By default 2.2e-16.
     Returns
     -------
     bool
@@ -400,7 +400,8 @@ def make_X_and_G_respect_strong_wolfe(
     G : Deque[NDArrayFloat]
         Sequence of past gradient vectors respecting the strong wolfe conditions.
     eps : float, optional
-        _description_, by default 2.2e-16
+        Positive stability parameter for accepting current step for updating.
+        By default 2.2e-16.
     logger: Optional[Logger], optional
         :class:`logging.Logger` instance. If None, nothing is displayed, no matter the
         value of `iprint`, by default None.
@@ -408,7 +409,7 @@ def make_X_and_G_respect_strong_wolfe(
     Returns
     -------
     Tuple[Deque[NDArrayFloat], Deque[NDArrayFloat]]
-        _description_
+        Updated X and G.
     """
 
     ncor: int = len(X) - 1
@@ -417,7 +418,7 @@ def make_X_and_G_respect_strong_wolfe(
         k = ncor - i - 1  # start at 1
         if not is_update_X_and_G(X[k], G[k], _X[0], _G[0], eps):
             if logger is not None:
-                logger.info(f"Dropping update #{- i - 2}")
+                logger.info(f"Dropping update #{-i - 2}")
         else:
             _X.appendleft(X[k])
             _G.appendleft(G[k])

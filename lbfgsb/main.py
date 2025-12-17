@@ -123,7 +123,7 @@ def minimize_lbfgsb(
     maxiter: int = 50,
     eps: float = 1e-8,
     maxfun: int = 15000,
-    callback: Optional[Callable] = None,
+    callback: Optional[Callable[[NDArrayFloat, OptimizeResult], bool]] = None,
     maxls: int = 20,
     finite_diff_rel_step: Optional[float] = None,
     max_steplength: float = 1e8,
@@ -186,8 +186,7 @@ def minimize_lbfgsb(
             -> f0, f0_old, grad, updated grad_deque``
 
     bounds : sequence or `Bounds`, optional
-        Bounds on variables for Nelder-Mead, L-BFGS-B, TNC, SLSQP, Powell, and
-        trust-constr methods. There are two ways to specify the bounds:
+        Bounds on variables. There are two ways to specify the bounds:
 
             1. Instance of `Bounds` class.
             2. Sequence of ``(min, max)`` pairs for each element in `x`. None
@@ -247,7 +246,7 @@ def minimize_lbfgsb(
         stop after maxfun has been reached.
     maxiter : int
         Maximum number of iterations.
-    callback : callable, optional
+    callback : Optional[Callable[[NDArrayFloat, OptimizeResult], bool]]
         Called after each iteration. It is a callable with
         the signature:
 
@@ -445,8 +444,6 @@ def minimize_lbfgsb(
 
         if logger is not None:
             logger.info(f"scaling factor = {sf.scaling_factor:.2e}")
-
-    # print(sf.scaling_factor)
 
     f0 *= sf.scaling_factor
     grad *= sf.scaling_factor

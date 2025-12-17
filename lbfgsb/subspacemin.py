@@ -209,16 +209,16 @@ def form_k_from_wm(
     Parameters
     ----------
     WTZ : NDArrayFloat
-        _description_
+        Matrix WTZ (TODO: add the shape.)
     invMfactors : Tuple[NDArrayFloat, NDArrayFloat]
-        _description_
+        LU factorization of the inverse of the middle matrix M.
     theta : float
-        _description_
+        L-BFGS float parameter (multiply the identity matrix).
 
     Returns
     -------
     NDArrayFloat
-        _description_
+        Matrix K.
     """
     # Instead we build K directly as M^{-1}(I - 1/theta M WT Z @ ZT @ W))
     K = invMfactors[0] @ invMfactors[1]
@@ -244,27 +244,15 @@ def factorize_k(
 
     Parameters
     ----------
-    X : Deque[NDArrayFloat]
-        _description_
-    G : Deque[NDArrayFloat]
-        _description_
-    Z : spmatrix
-        _description_
-    A : spmatrix
-        _description_
-    WTZ : NDArrayFloat
-        _description_
-    invMfactors : Tuple[NDArrayFloat, NDArrayFloat]
-        _description_
-    theta : float
-        _description_
+    K: NDArrayFloat
+        Indefinite matrix to factorize.
     is_assert_correct : bool, optional
-        _description_, by default True
+        Whether to test the correctness of the factorization, by default True
 
     Returns
     -------
     Optional[NDArrayFloat]
-        _description_
+        LK, the lower triangle of the matrix factorization K = LK @ E @ LK.T
     """
     # The factorization only makes sense if K is at least (2, 2).
     if K.size < 4:

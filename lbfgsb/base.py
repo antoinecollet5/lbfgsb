@@ -38,7 +38,7 @@ def get_bounds(
     x0 : NDArrayFloat
         TODO: x0 can be or an ensemble or a vector. add shapes.
     bounds : Optional[NDArrayFloat]
-        _description_
+        TODO.
 
     Returns
     -------
@@ -48,9 +48,11 @@ def get_bounds(
     Raises
     ------
     ValueError
-        _description_
+        If x0 is an empty vector or if the length of x0 does not match the length
+        of the bounds.
     ValueError
-        _description_
+        If there are some values in x0 that violate the bounds.
+
     """
     n = x0.shape[0]
     if n == 0:
@@ -196,13 +198,13 @@ def projgr(
     Parameters
     ----------
     x : NDArrayFloat
-        _description_
+        Parameters vector with size n.
     g : NDArrayFloat
-        _description_
+        Gradient of the cost function with respect to x.
     lb : NDArrayFloat
-        _description_
+        Lower bounds vector with size n.
     ub : NDArrayFloat
-        _description_
+        Upper bounds vector with size n.
 
     Returns
     -------
@@ -263,13 +265,14 @@ def display_results(
     Parameters
     ----------
     n_iterations : int
-        _description_
+        Current number of iterations.
     max_iter : _type_
-        _description_
+        Maximum number of iterations allowed.
     x : NDArrayFloat
-        _description_
+        Adjusted parameters vectors. Array of real elements of size (n,),
+        where ``n`` is the number of independent variables.
     grad : NDArrayFloat
-        _description_
+        Gradient of the cost function with respect to `x`.
     lb : NDArrayFloat
         Lower bound vector.
     ub : NDArrayFloat

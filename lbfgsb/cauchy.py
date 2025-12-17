@@ -73,9 +73,7 @@ def display_start_point(
         return
     if logger is None:
         return
-    logger.info(
-        f"Piece    , {nseg},  --f1, f2 at start point , {f_prime} , " f"{f_second}"
-    )
+    logger.info(f"Piece    , {nseg},  --f1, f2 at start point , {f_prime} , {f_second}")
     if delta_t is not None:
         logger.info(f"Distance to the next break point =  {delta_t}")
     logger.info(f"Distance to the stationary point =  {delta_t_min}")
