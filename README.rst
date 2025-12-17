@@ -244,7 +244,7 @@ yields
 
 Note that this time, we keep track of `nfev` and `njev`. In addition, the results is strictly the same as minimizing the function in
 a single run. This can be pretty useful if computing the objective function and its gradient is expensive but one
-is not so sure about what stopping criteria to use.
+is not so sure about what stopping criteria to use. TODO: add something about use case for scaling.
 
 Callback
 --------
@@ -293,11 +293,21 @@ yields
 Cost function update
 --------------------
 
-Description coming Q1 2026.
+Function to update the gradient sequence. This allows changing the objective function definition on the fly.
+In the first place this functionality is dedicated to regularized problems for which the
+regularization weight is computed while optimizing the cost function. In order to get a
+Hessian matching the new definition of `fun`, the gradient sequence must be updated.
+
+.. code-block::
+
+    ``update_fun_def(x, f0, f0_old, grad, x_deque, grad_deque)
+    -> f0, f0_old, grad, updated grad_deque``
+
+Complete example with supporting paper coming Q1 2026.
 
 
 .. |License| image:: https://img.shields.io/badge/License-MIT license-blue.svg
-    :target: https://github.com/antoinecollet5/lbfgsb/-/blob/master/LICENSE
+    :target: https://github.com/antoinecollet5/lbfgsb/blob/master/LICENSE
 
 .. |Stars| image:: https://img.shields.io/github/stars/antoinecollet5/lbfgsb.svg?style=social&label=Star&maxAge=2592000
     :target: https://github.com/antoinecollet5/lbfgsb/stargazers
