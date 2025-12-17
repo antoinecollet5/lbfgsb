@@ -54,8 +54,9 @@ ACM Transactions on Mathematical Software, 38, 1.
 * Free software: MIT license
 * Documentation: https://lbfgsb.readthedocs.io.
 
+===========
 Quick start
------------
+===========
 
 Given an optimization problem defined by an objective function and a feasible space:
 
@@ -119,7 +120,7 @@ The optimal solution can be found following:
 
    from lbfgsb import minimize_lbfgsb
 
-   x = minimize_lbfgsb(
+   res = minimize_lbfgsb(
      x0=x0, fun=rosenbrock, jac=rosenbrock_grad, bounds=bounds, ftol=1e-5, gtol=1e-5
    )
 
@@ -129,16 +130,170 @@ The optimal solution can be found following:
 
     message: CONVERGENCE: REL_REDUCTION_OF_F_<=_FTOL
     success: True
-     status: 0
-        fun: 3.9912062309350614e-08
-          x: [ 1.000e+00  1.000e+00]
-        nit: 18
-        jac: [-6.576e-02  3.220e-02]
-       nfev: 23
-       njev: 23
-   hess_inv: <2x2 LbfgsInvHessProduct with dtype=float64>
+    status: 0
+        fun: 5.834035724922196e-07
+            x: [ 9.994e-01  9.989e-01]
+        nit: 16
+        jac: [-2.171e-02  1.030e-02]
+        nfev: 19
+        njev: 19
+    hess_inv: <2x2 LbfgsInvHessProduct with dtype=float64>
 
 See all use cases in the tutorials section of the `documentation <https://lbfgsb.readthedocs.io/en/latest/usage.html>`_.
+
+===========
+Performance
+===========
+
+Although memory consumption and computation time are acceptable thanks to the use of numpy and vectorization,
+note that the code is expected to be much slower than the scipy version
+(`originally in Fortran77, and ported to C since v1.15.0 <https://docs.scipy.org/doc/scipy/release/1.15.0-notes.html#scipy-optimize-improvements>`_).
+It will remain negligeable for small size problems or if the computation time is dominated by the objective function and its gradient evaluation.
+Especially, it provides unique features currently not supported by any other implementations.
+
+===============
+Unique features
+===============
+
+Here are some of the unique features that this implementation provides (to the best of our knowledge in 2025).
+
+Checkpointing
+-------------
+
+In quasi-Newtons (L-BFGS-B is one of them), the inverse of the Hessian is approximated from the
+series of the (`m` last) past gradients. If the optimization is stopped, the history is lost and restarting
+the optimization would results in a slower convergence (more total objective function and gradient calls) because
+the inverse Hessian would be reinitiated as the identity.
+
+Let's take the previous example with the rosenbrock objective function. But this time, the process is stopped after three calls of the function (`maxfun=3`)
+
+.. code-block:: python
+
+    res_3_fun = minimize_lbfgsb(
+        x0=x0, fun=rosenbrock, jac=rosenbrock_grad, bounds=bounds, ftol=1e-5, gtol=1e-5, maxfun=3
+    )
+    print(res_3_fun)
+
+It yields
+
+.. code-block::
+
+    message: STOP: TOTAL NO. of f AND g EVALUATIONS EXCEEDS LIMIT
+    success: True
+    status: 1
+        fun: 0.8619211711864526
+            x: [ 6.370e-01  4.913e-01]
+        nit: 1
+        jac: [-2.250e+01  1.709e+01]
+        nfev: 3
+        njev: 3
+    hess_inv: <2x2 LbfgsInvHessProduct with dtype=float64>
+
+Resuming the minimization from the previous parameters state (`x0=res_3_fun.x`):
+
+.. code-block:: python
+
+    res_final = minimize_lbfgsb(
+        x0=res_3_fun.x, fun=rosenbrock, jac=rosenbrock_grad, bounds=bounds, ftol=1e-5, gtol=1e-5
+    )
+    print(res_final)
+
+gives
+
+.. code-block::
+
+    message: CONVERGENCE: REL_REDUCTION_OF_F_<=_FTOL
+    success: True
+    status: 0
+        fun: 1.349454245280619e-10
+            x: [ 1.000e+00  1.000e+00]
+        nit: 14
+        jac: [ 1.030e-04 -6.267e-05]
+        nfev: 21
+        njev: 21
+    hess_inv: <2x2 LbfgsInvHessProduct with dtype=float64>
+
+One can see that the total number of calls to the objective function and to its gradient is higher (`3+21 = 24` vs `19` originally).
+In addition, one needs to compute it manually because it looses track of the state when restarting `L-BFGS-B`.
+Also one sees that the final result is different.
+
+With the checkpointing, it is possible to restore the last state in a straighforward manner and obtain strictly the same results:
+
+.. code-block:: python
+
+    res_checkpoint = minimize_lbfgsb(
+        x0=res_3_fun.x, fun=rosenbrock, jac=rosenbrock_grad, bounds=bounds, ftol=1e-5, gtol=1e-5, checkpoint=res_3_fun
+    )
+    print(res_checkpoint)
+
+
+yields
+
+.. code-block::
+
+    message: CONVERGENCE: REL_REDUCTION_OF_F_<=_FTOL
+    success: True
+    status: 0
+        fun: 5.834035724922196e-07
+            x: [ 9.994e-01  9.989e-01]
+        nit: 16
+        jac: [-2.171e-02  1.030e-02]
+        nfev: 19
+        njev: 19
+    hess_inv: <2x2 LbfgsInvHessProduct with dtype=float64>
+
+Note that this time, we keep track of `nfev` and `njev`. In addition, the results is strictly the same as minimizing the function in
+a single run. This can be pretty useful if computing the objective function and its gradient is expensive but one
+is not so sure about what stopping criteria to use.
+
+Callback
+--------
+
+Our implementation of L-BFGS-B allows to use several standard stop criteria:
+
+• The change in objective function value between two iterations.
+• And the norm of the objective function gradient.
+
+The callback mechanism allows to enhance these possibilities and define custom stopping criteria.
+For example, one can redefine the criterion based on the number of objective function evaluations
+(`maxfun`). If the algorithm should stop, the callback must return `True`.
+
+.. code-block:: python
+
+    import numpy as np
+    from scipy.optimize import OptimizeResult
+
+    def my_custom_callback(xk: np.typing.NDArray[np.float64], state: OptimizeResult) -> bool:
+        # if the objective function has been called 10 times or more => stop
+        if state.nfev >= 10:
+            return True
+        return False
+
+
+    res_callback = minimize_lbfgsb(
+        x0=x0, fun=rosenbrock, jac=rosenbrock_grad, bounds=bounds, ftol=1e-5, gtol=1e-5, callback=my_custom_callback
+    )
+    print(res_callback)
+
+yields
+
+.. code-block::
+
+    message: STOP: USER CALLBACK
+    success: True
+    status: 2
+        fun: 0.08537354414890966
+            x: [ 7.354e-01  5.284e-01]
+        nit: 8
+        jac: [ 3.115e+00 -2.478e+00]
+        nfev: 10
+        njev: 10
+    hess_inv: <2x2 LbfgsInvHessProduct with dtype=float64>
+
+Cost function update
+--------------------
+
+Description coming Q1 2026.
 
 
 .. |License| image:: https://img.shields.io/badge/License-MIT license-blue.svg
