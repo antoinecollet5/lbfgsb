@@ -89,8 +89,6 @@ class ScalarFunction:
         self.g_updated = False
         self.H_updated = False
 
-        self.scaling_factor = 1.0
-
         self._lowest_x = None
         self._lowest_f = np.inf
 
@@ -172,20 +170,20 @@ class ScalarFunction:
         if not np.array_equal(x, self.x):
             self.update_x(x)
         self._update_fun()
-        return self.f * self.scaling_factor
+        return self.f
 
     def grad(self, x):
         if not np.array_equal(x, self.x):
             self.update_x(x)
         self._update_grad()
-        return self.g * self.scaling_factor
+        return self.g
 
     def fun_and_grad(self, x):
         if not np.array_equal(x, self.x):
             self.update_x(x)
         self._update_fun()
         self._update_grad()
-        return self.f * self.scaling_factor, self.g * self.scaling_factor
+        return self.f, self.g
 
 
 def prepare_scalar_function(

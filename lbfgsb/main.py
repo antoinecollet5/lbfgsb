@@ -132,9 +132,6 @@ def minimize_lbfgsb(
     xtol_linesearch: float = 1e-1,
     eps_SY: float = 2.2e-16,
     iprint: int = -1,
-    gradient_scaler: Optional[
-        Callable[[NDArrayFloat, NDArrayFloat, NDArrayFloat, NDArrayFloat], float]
-    ] = None,
     logger: Optional[logging.Logger] = None,
     is_check_factorization: bool = False,
 ) -> OptimizeResult:
@@ -315,11 +312,6 @@ def minimize_lbfgsb(
         ``iprint = 0``    print only one line at the last iteration;
         ``0 < iprint < 99`` print also f and ``|proj g|`` every iprint iterations;
         ``iprint >= 99``   print details of every iteration except n-vectors;
-    gradient_scaler: Optional[Callable]]
-        Optional function that calculates a scaling factor for the initial gradient to
-        be used in the rest of the optimization. This is still under investigation, but
-        the initial gradient scale seems to have a lot of influence on the optimization.
-        If None, the scaling factor is set to 1.0 (no scaling). The default is None.
     logger: Optional[Logger], optional
         :class:`logging.Logger` instance. If None, nothing is displayed, no matter the
         value of `iprint`, by default None.
@@ -437,16 +429,6 @@ def minimize_lbfgsb(
     else:
         grad = checkpoint.jac
 
-    # scale the initial gradient and consequently the objective function
-    # this is optional and needs to be investigated and documented.
-    if gradient_scaler is not None:
-        sf.scaling_factor = gradient_scaler(x, grad, lb, ub)
-
-        if logger is not None:
-            logger.info(f"scaling factor = {sf.scaling_factor:.2e}")
-
-    f0 *= sf.scaling_factor
-    grad *= sf.scaling_factor
     # Note, no need to further update anything because the scaling is handled by the
     # ScalarFunction instance
 
