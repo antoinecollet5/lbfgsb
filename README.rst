@@ -251,8 +251,11 @@ Callback
 
 Our implementation of L-BFGS-B allows to use several standard stop criteria:
 
+• The absolute value of the objective function
 • The change in objective function value between two iterations.
 • And the norm of the objective function gradient.
+• The maximum number of iterations.
+• The maximum number of objective function calls.
 
 The callback mechanism allows to enhance these possibilities and define custom stopping criteria.
 For example, one can redefine the criterion based on the number of objective function evaluations
