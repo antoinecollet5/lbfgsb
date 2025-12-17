@@ -13,7 +13,7 @@ env:
 
 jobs:
   static_analysis:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -40,7 +40,7 @@ jobs:
           path: pre-commit-report
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     env:
       NUMBA_DISABLE_JIT : 1
     steps:
@@ -76,7 +76,7 @@ jobs:
 
 
   tox:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     strategy:
       max-parallel: 6
       matrix:
