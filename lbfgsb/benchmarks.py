@@ -247,17 +247,19 @@ def rosenbrock(x: NDArrayFloat) -> float:
     Parameters
     ----------
     x : array_like
-        1-D array of points at which the Rosenbrock function is to be computed.
+       Array of of points at which the Rosenbrock function is to be computed.
+       It can be of shape (m,) or (m, n), m being the number of variables per vector
+       of parameters and n the number of different vectors.
 
     Returns
     -------
     float
-        The value of the Rosenbrock function.
+        The gradient of the Rosenbrock function with size (n,).
 
     """
     x = np.asarray(x)
-    sum1 = ((x[1:] - x[:-1] ** 2.0) ** 2.0).sum()
-    sum2 = np.square(1.0 - x[:-1]).sum()
+    sum1 = ((x[1:] - x[:-1] ** 2.0) ** 2.0).sum(axis=0)
+    sum2 = np.square(1.0 - x[:-1]).sum(axis=0)
     return 100.0 * sum1 + sum2
 
 
@@ -268,15 +270,17 @@ def rosenbrock_grad(x: NDArrayFloat) -> NDArrayFloat:
     Parameters
     ----------
     x : array_like
-        1-D array of points at which the Rosenbrock function is to be derivated.
+       Array of of points at which the Rosenbrock function is to be computed.
+       It can be of shape (m,) or (m, n), m being the number of variables per vector
+       of parameters and n the number of different vectors.
 
     Returns
     -------
     NDArrayFloat
-        The gradient of the Rosenbrock function.
+        The gradient(s) of the Rosenbrock function with the same shapes as the input x.
     """
     x = np.asarray(x)
-    g = np.zeros(x.size)
+    g = np.zeros(x.shape)
     # derivation of sum1
     g[1:] += 100.0 * (2.0 * x[1:] - 2.0 * x[:-1] ** 2.0)
     g[:-1] += 100.0 * (-4.0 * x[1:] * x[:-1] + 4.0 * x[:-1] ** 3.0)

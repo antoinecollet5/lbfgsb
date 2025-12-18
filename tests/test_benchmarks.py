@@ -45,3 +45,20 @@ def test_benchmark_functions(function: Callable, gradient: Callable) -> None:
     np.testing.assert_allclose(
         gradient(x), nd.Gradient(function, step=1e-5)(x), atol=1e-5, rtol=1e-5
     )
+
+
+def test_multidim_rosenbrock() -> None:
+    x0 = np.array([-0.8, -1])  # The initial guess
+
+    n = 1000
+    x0_large = np.repeat(x0, n).reshape(2, -1)
+
+    values = rosenbrock(x0_large)
+    assert np.size(values) == n
+
+    grads = rosenbrock_grad(x0_large)
+    assert np.shape(grads) == np.shape(x0_large)
+
+    # Test the equality
+    np.testing.assert_allclose(values, np.repeat(rosenbrock(x0), n))
+    np.testing.assert_allclose(grads, np.repeat(rosenbrock_grad(x0), n).reshape(2, -1))
