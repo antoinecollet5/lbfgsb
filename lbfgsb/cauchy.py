@@ -85,7 +85,6 @@ def get_cauchy_point(
     lb: NDArrayFloat,
     ub: NDArrayFloat,
     mats: LBFGSB_MATRICES,
-    iter: int,
     iprint: int,
     logger: Optional[logging.Logger] = None,
 ) -> Tuple[NDArrayFloat, NDArrayFloat]:
@@ -114,8 +113,6 @@ def get_cauchy_point(
         Upper bound vector.
     mats: LBFGSB_MATRICES
         TODO.
-    iter: int
-        Current iteration.
     iprint : int, optional
         Controls the frequency of output. ``iprint < 0`` means no output;
         ``iprint = 0``    print only one line at the last iteration;

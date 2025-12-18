@@ -487,7 +487,6 @@ def minimize_lbfgsb(
             lb,
             ub,
             mats,
-            istate.nit,
             iprint,
             logger,
         )
