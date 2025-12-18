@@ -400,7 +400,7 @@ def minimize_lbfgsb(
     # early check of stop criterion -> Extreme case in which x0 satisfies the
     # criterion, then no optimization is needed and one does not need to compute
     # anything else.
-    if is_f0_target_reached(f0 / sf.scaling_factor, _ftarget, istate):
+    if is_f0_target_reached(f0, _ftarget, istate):
         # leave the optimization routine
         if checkpoint is None:
             if len(X) == 0:
@@ -554,7 +554,7 @@ def minimize_lbfgsb(
             f0, grad = sf.fun_and_grad(x)
 
             if update_fun_def is None:
-                if is_f0_target_reached(f0 / sf.scaling_factor, _ftarget, istate):
+                if is_f0_target_reached(f0, _ftarget, istate):
                     break  # the while loop
                 elif is_f0_min_change_reached(f0, f0_old, ftol, istate):
                     break  # the while loop
@@ -570,7 +570,7 @@ def minimize_lbfgsb(
                     break  # the while loop
 
                 # Check stop criterion: minimum objective function value
-                elif is_f0_target_reached(f0 / sf.scaling_factor, _ftarget, istate):
+                elif is_f0_target_reached(f0, _ftarget, istate):
                     break  # the while loop
 
                 # We must check if the updated G satisfy the strong wolfe condition
