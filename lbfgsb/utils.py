@@ -33,13 +33,14 @@ def extract_hess_inv_diag(hess_inv: LbfgsInvHessProduct) -> NDArrayFloat:
     return hess_inv_diag
 
 
-def get_gradient_projection_unit_scaling(
+def get_grad_projection_inf_norm(
     x: NDArrayFloat,
     grad: NDArrayFloat,
     lbounds: NDArrayFloat,
     ubounds: NDArrayFloat,
 ) -> float:
-    """_summary_
+    """
+    Get the infinite norm of the projected gradient.
 
     Parameters
     ----------
@@ -57,7 +58,4 @@ def get_gradient_projection_unit_scaling(
     float
         The scaling factor.
     """
-    # perform a bounded update
-    updated_params = x - np.clip(x - grad, a_min=lbounds, a_max=ubounds)
-    max_change = max(abs(updated_params))
-    return 1.0 / max_change
+    return np.max(np.abs(x - np.clip(x - grad, a_min=lbounds, a_max=ubounds))).item()

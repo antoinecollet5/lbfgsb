@@ -2,7 +2,7 @@
 
 import numpy as np
 import scipy.linalg
-from lbfgsb import extract_hess_inv_diag, get_gradient_projection_unit_scaling
+from lbfgsb import extract_hess_inv_diag, get_grad_projection_inf_norm
 from numpy.testing import assert_allclose
 from scipy.optimize import minimize
 
@@ -54,11 +54,11 @@ def test_2():
     )
 
 
-def test_get_gradient_projection_unit_scaling() -> None:
+def test_get_grad_projection_inf_norm() -> None:
     x = np.array([1.0, 5.0, 6.0])
     grad = np.array([1.0, 5.0, 6.0])
     lbounds = np.array([2.0, 2.0, 2.0])
     ubounds = np.array([5.0, 5.0, 5.0])
     np.testing.assert_allclose(
-        get_gradient_projection_unit_scaling(x, grad, lbounds, ubounds), 0.25
+        get_grad_projection_inf_norm(x, grad, lbounds, ubounds), 4.0
     )
