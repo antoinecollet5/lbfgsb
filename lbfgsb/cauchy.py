@@ -150,12 +150,14 @@ def get_cauchy_point(
     x_cp: NDArrayFloat = x.copy()
 
     # To define the breakpoints in each coordinate direction, we compute
-    t: NDArrayFloat = np.zeros_like(grad)
-    mask = grad != 0
-    t[mask] = np.where(
-        grad[mask] < 0, (x - ub)[mask] / grad[mask], (x - lb)[mask] / grad[mask]
-    )
-    t[grad == 0] = np.inf
+    t = np.empty_like(grad)
+    t.fill(np.inf)
+    # masks
+    neg = grad < 0
+    pos = grad > 0
+    # update breakpoints
+    t[neg] = (x[neg] - ub[neg]) / grad[neg]
+    t[pos] = (x[pos] - lb[pos]) / grad[pos]
 
     # used to store the Cauchy direction `P(x-tg)-x`.
     d = np.where(t == 0, 0.0, -grad)
@@ -164,7 +166,10 @@ def get_cauchy_point(
     # sort {t;,i = 1,. ..,n} in increasing order to obtain the ordered
     # set {tj :tj <= tj+1 ,j = 1, ...,n}.
     # Keep only the indices where t > 0
-    sorted_t_idx: NDArrayInt = np.argsort(t)[t > 0]
+    # Note: sorts only positive breakpoints to reduces sort cost from O(n log n)
+    # to O(k log k) where k ≪ n in practice
+    pos_idx = np.flatnonzero(t > 0)
+    sorted_t_idx: NDArrayInt = pos_idx[np.argsort(t[pos_idx])]
 
     # Initialization
     p = mats.W.T @ d  # 2mn operations
@@ -216,7 +221,8 @@ def get_cauchy_point(
     # flag
     is_gpc_found = False
 
-    while _i < len(sorted_t_idx):
+    nbreak = len(sorted_t_idx)
+    while _i < nbreak:
         display_start_point(
             nseg, f_prime, f_second, delta_t, delta_t_min, iprint, logger
         )
@@ -251,8 +257,9 @@ def get_cauchy_point(
         # First iteration -> invMfactors and M are worse zero.
         # And cho_solve produces nan
         if mats.use_factor:
-            f_prime -= g_b * W_b.dot(bmv(mats.invMfactors, c))
-            f_second -= g_b * W_b.dot(bmv(mats.invMfactors, (2 * p + g_b * W_b)))
+            invMWb = bmv(mats.invMfactors, W_b)
+            f_prime -= g_b * invMWb.dot(c)
+            f_second -= g_b * (2.0 * invMWb.dot(p) + g_b * invMWb.dot(W_b))
 
         # this is a trick of the original FORTRAN code that prevents very low
         # values of f2
@@ -265,10 +272,10 @@ def get_cauchy_point(
         t_old = copy.copy(t_cur)
 
         _i += 1
-        try:
-            ibp = sorted_t_idx[_i]
+        if _i + 1 < nbreak:
+            ibp = sorted_t_idx[_i + 1]
             t_cur = t[ibp]
-        except IndexError:
+        else:
             # to ensure that delta_t > delta_t_min and break the while
             t_cur = np.inf
 
@@ -285,7 +292,8 @@ def get_cauchy_point(
     delta_t_min = 0 if delta_t_min < 0 else delta_t_min
     t_old += delta_t_min
 
-    x_cp[t >= t_cur] = (x + t_old * d)[t >= t_cur]
+    mask = t >= t_cur
+    x_cp[mask] = x[mask] + t_old * d[mask]
 
     c += delta_t_min * p
 
