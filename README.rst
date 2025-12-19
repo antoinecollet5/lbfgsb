@@ -54,9 +54,9 @@ ACM Transactions on Mathematical Software, 38, 1.
 * Free software: MIT license
 * Documentation: https://lbfgsb.readthedocs.io.
 
-===========
-Quick start
-===========
+===============
+🚀 Quick start
+===============
 
 Given an optimization problem defined by an objective function and a feasible space:
 
@@ -141,9 +141,9 @@ The optimal solution can be found following:
 
 See all use cases in the tutorials section of the `documentation <https://lbfgsb.readthedocs.io/en/latest/usage.html>`_.
 
-===========
-Performance
-===========
+===============
+⚡ Performance
+===============
 
 Although memory usage and runtime remain reasonable thanks to NumPy and extensive
 vectorization, a pure Python implementation is inherently slower and more memory-intensive
@@ -169,7 +169,13 @@ a warning is issued and the code automatically falls back to the non-JIT impleme
 .. code-block:: python
 
    res = minimize_lbfgsb(
-     x0=x0, fun=rosenbrock, jac=rosenbrock_grad, bounds=bounds, ftol=1e-5, gtol=1e-5, is_use_numba_jit=False
+     x0=x0, 
+     fun=rosenbrock, 
+     jac=rosenbrock_grad, 
+     bounds=bounds, 
+     ftol=1e-5, 
+     gtol=1e-5, 
+     is_use_numba_jit=False
    )
 
 Note that numba comes as an optional dependency and should be installed in one of the following ways:
@@ -194,9 +200,9 @@ Or alternatively using conda
 
 If numba is not found in your environement, a RunTime warning will be raised.
 
-===============
-Unique features
-===============
+===================
+🧠 Unique features
+===================
 
 Here are some of the unique features that this implementation provides (to the best of our knowledge in 2025).
 
@@ -213,7 +219,13 @@ Let's take the previous example with the rosenbrock objective function. But this
 .. code-block:: python
 
     res_3_fun = minimize_lbfgsb(
-        x0=x0, fun=rosenbrock, jac=rosenbrock_grad, bounds=bounds, ftol=1e-5, gtol=1e-5, maxfun=3
+        x0=x0, 
+        fun=rosenbrock, 
+        jac=rosenbrock_grad,
+        bounds=bounds, 
+        ftol=1e-5, 
+        gtol=1e-5, 
+        maxfun=3
     )
     print(res_3_fun)
 
@@ -237,7 +249,12 @@ Resuming the minimization from the previous parameters state (`x0=res_3_fun.x`):
 .. code-block:: python
 
     res_final = minimize_lbfgsb(
-        x0=res_3_fun.x, fun=rosenbrock, jac=rosenbrock_grad, bounds=bounds, ftol=1e-5, gtol=1e-5
+        x0=res_3_fun.x, 
+        fun=rosenbrock, 
+        jac=rosenbrock_grad, 
+        bounds=bounds, 
+        ftol=1e-5, 
+        gtol=1e-5
     )
     print(res_final)
 
@@ -323,7 +340,13 @@ For example, one can redefine the criterion based on the number of objective fun
 
 
     res_callback = minimize_lbfgsb(
-        x0=x0, fun=rosenbrock, jac=rosenbrock_grad, bounds=bounds, ftol=1e-5, gtol=1e-5, callback=my_custom_callback
+        x0=x0, 
+        fun=rosenbrock, 
+        jac=rosenbrock_grad, 
+        bounds=bounds, 
+        ftol=1e-5, 
+        gtol=1e-5, 
+        callback=my_custom_callback
     )
     print(res_callback)
 
