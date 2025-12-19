@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright (c) 2025 Antoine COLLET
+
 """Test the benchmark functions and their gradients."""
 
 from typing import Callable

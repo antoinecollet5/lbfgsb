@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright (c) 2025 Antoine COLLET
+
 import re
 from contextlib import nullcontext as does_not_raise
 

@@ -30,7 +30,7 @@ In this context, the objectives of this code are as follows:
 - learn the underlying mechanisms of lbfgsb code;
 - provide understandable, modern code using the high-level language python, while using typing, explicit function names and standardized formatting thanks to `Ruff <https://docs.astral.sh/ruff/>`_;
 - provide detailed and explicit documentation;
-- offer totally free code, including for commercial use, thanks to the MIT license;
+- offer totally free code, including for commercial use, thanks to the BSD-3-Clause license;
 - garantee efficient code, with the number of calls to the objective function and gradient at least as low as in the reference implementation, and without drastically increasing memory consumption or computation time, thanks to the use of numpy and vectorization;
 - add relevant stopping criteria;
 - add the possibility to restart the solver from a checkpoint;
@@ -51,7 +51,7 @@ ACM Transactions on Mathematical Software, 23, 4, pp. 550 - 560.
 FORTRAN routines for large scale bound constrained optimization (2011),
 ACM Transactions on Mathematical Software, 38, 1.
 
-* Free software: MIT license
+* Free software: SPDX-License-Identifier: BSD-3-Clause
 * Documentation: https://lbfgsb.readthedocs.io.
 
 ===============
@@ -380,8 +380,43 @@ Hessian matching the new definition of `fun`, the gradient sequence must be upda
 
 Complete example with supporting paper coming Q1 2026.
 
+===========
+🔑 License
+===========
 
-.. |License| image:: https://img.shields.io/badge/License-MIT license-blue.svg
+This project is released under the **BSD 3-Clause License**.
+
+Copyright (c) 2025, Antoine COLLET. All rights reserved.
+
+For more details, see the :file:`LICENSE` file included in this repository.
+
+==============
+⚠️ Disclaimer
+==============
+
+This software is provided "as is", without warranty of any kind, express or implied, 
+including but not limited to the warranties of merchantability, fitness for a particular purpose, 
+or non-infringement. In no event shall the authors or copyright holders be liable for 
+any claim, damages, or other liability, whether in an action of contract, tort, 
+or otherwise, arising from, out of, or in connection with the software or the use 
+or other dealings in the software.
+
+By using this software, you agree to accept full responsibility for any consequences, 
+and you waive any claims against the authors or contributors.
+
+=======
+Contact
+=======
+
+For questions, suggestions, or contributions, you can reach out via:
+
+- Email: antoinecollet5@gmail.com
+- GitHub: https://github.com/antoinecollet5/lbfgsb
+
+We welcome contributions! Please see the :ref:`contributing` section for guidelines.
+
+
+.. |License| image:: https://img.shields.io/badge/License-BSD_3--Clause-blue.svg
     :target: https://github.com/antoinecollet5/lbfgsb/blob/master/LICENSE
 
 .. |Stars| image:: https://img.shields.io/github/stars/antoinecollet5/lbfgsb.svg?style=social&label=Star&maxAge=2592000

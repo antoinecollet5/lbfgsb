@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright (c) 2025 Antoine COLLET
+
 r"""
 Implement the line search algorithm by Moré and Thuente (1994),
 currently used for the L-BFGS-B algorithm.

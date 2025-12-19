@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright (c) 2025 Antoine COLLET
+
 import numpy as np
 from scipy.optimize._numdiff import approx_derivative
 

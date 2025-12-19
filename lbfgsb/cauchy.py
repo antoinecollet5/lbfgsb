@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright (c) 2025 Antoine COLLET
+
 """
 Implement a function to compute the generalized Cauchy point (GCP) for the L-BFGS-B
 algorithm, mainly for internal use.

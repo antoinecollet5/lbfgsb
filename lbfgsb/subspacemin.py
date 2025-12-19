@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright (c) 2025 Antoine COLLET
+
 """
 Subspace minimization procedure of the L-BFGS-B algorithm,
 mainly for internal use.
