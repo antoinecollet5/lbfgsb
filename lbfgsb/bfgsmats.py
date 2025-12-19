@@ -35,6 +35,7 @@ from typing import Deque, Optional, Tuple
 import numpy as np
 import scipy as sp
 
+from lbfgsb._numba_helpers import njit
 from lbfgsb.types import NDArrayFloat
 
 
@@ -58,7 +59,6 @@ class LBFGSB_MATRICES:
         # shape (2m, 2m)
     theta : float
         L-BFGS float parameter (multiply the identity matrix).
-    TODO.
     """
 
     __slots__ = ["S", "Y", "D", "L", "W", "invMfactors", "theta"]
@@ -124,6 +124,33 @@ def bmv(
     )
 
 
+@njit(cache=True)
+def bmv_numba(L: NDArrayFloat, U: NDArrayFloat, v: NDArrayFloat) -> NDArrayFloat:
+    """
+    Numba replacement for:
+        solve_triangular(U, solve_triangular(L, v, lower=True), lower=False)
+    """
+    n = v.size
+    y = np.empty(n)
+    p = np.empty(n)
+
+    # Forward solve: L y = v
+    for i in range(n):
+        s = v[i]
+        for j in range(i):
+            s -= L[i, j] * y[j]
+        y[i] = s / L[i, i]
+
+    # Backward solve: U p = y
+    for i in range(n - 1, -1, -1):
+        s = y[i]
+        for j in range(i + 1, n):
+            s -= U[i, j] * p[j]
+        p[i] = s / U[i, i]
+
+    return p
+
+
 def form_invMfactors(theta, STS, L, D) -> Tuple[NDArrayFloat, NDArrayFloat]:
     r"""
     Return upper triangle of the cholesky factorization of the inverse of M_k.
@@ -159,21 +186,31 @@ def form_invMfactors(theta, STS, L, D) -> Tuple[NDArrayFloat, NDArrayFloat]:
     # Cholesky factorization
     J = sp.linalg.cholesky(theta * STS + L @ invD @ L.T, lower=True)
 
+    m = D.shape[0]
+    dtype = D.dtype
+
+    sqrtD = np.sqrt(D)
+    sqrtInvD = np.sqrt(invD)
+
+    # Precompute products
+    L_sqrtInvD = L @ sqrtInvD  # (m, m)
+    sqrtInvD_LT = sqrtInvD @ L.T  # (m, m)
+
+    L = np.zeros((2 * m, 2 * m), dtype=dtype)
+    U = np.zeros((2 * m, 2 * m), dtype=dtype)
+
+    # -------- Lower matrix --------
+    L[:m, :m] = sqrtD
+    L[m:, :m] = -L_sqrtInvD
+    L[m:, m:] = J
+
+    # -------- Upper matrix --------
+    U[:m, :m] = -sqrtD
+    U[:m, m:] = sqrtInvD_LT
+    U[m:, m:] = J.T
+
     # Note we form the upper triangle and then transpose it to get the lower one
-    return (
-        np.hstack(
-            [
-                np.vstack([np.sqrt(D), -(np.sqrt(invD) @ L.T).T]),  # upper row
-                np.vstack([np.zeros(D.shape), J]),  # lower row
-            ]
-        ),
-        np.hstack(
-            [
-                np.vstack([-np.sqrt(D), np.zeros(D.shape)]),  # upper row
-                np.vstack([np.sqrt(invD) @ L.T, J.T]),  # lower row
-            ]
-        ),
-    )
+    return L, U
 
 
 def update_lbfgs_matrices(
@@ -186,6 +223,7 @@ def update_lbfgs_matrices(
     is_force_update: bool,
     eps: float = 2.2e-16,
     is_check_factorization: bool = False,
+    is_use_numba_jit: bool = False,
 ) -> LBFGSB_MATRICES:
     r"""
     Update lists S and Y, and form the L-BFGS Hessian approximation.
@@ -202,9 +240,9 @@ def update_lbfgs_matrices(
         New x parameter.
     gk : NDArrayFloat
         New gradient parameter g.
-    X : deque
+    X : Deque[NDArrayFloat]
         List of successive parameters x.
-    G : deque
+    G : Deque[NDArrayFloat]
         List of successive gradients.
     maxcor : int
         The maximum number of variable metric corrections used to
@@ -218,8 +256,13 @@ def update_lbfgs_matrices(
     eps : float, optional
         Positive stability parameter for accepting current step for updating.
         By default 2.2e-16.
+    is_force_update: bool
+        This is to recompute fully the matrices.
     is_check_factorization: bool
-        Whether to check the cholesky actorization of M. The default is False.
+        Whether to check the cholesky factorization of M. The default is False.
+    is_use_numba_jit: bool
+        Whether to use `numba` just-in-time compilation to speed-up the computation
+        intensive part of the algorithm. The default is False.
 
     Returns
     -------
@@ -239,7 +282,9 @@ def update_lbfgs_matrices(
       ACM Transactions on Mathematical Software, 38, 1.
     """
     # Case of a vector
-    is_current_update_accepted: bool = update_X_and_G(xk, gk, X, G, maxcor, eps)
+    is_current_update_accepted: bool = update_X_and_G(
+        xk, gk, X, G, maxcor, eps, is_use_numba_jit
+    )
 
     # two conditions to update the inverse Hessian approximation
     if is_force_update or is_current_update_accepted:
@@ -252,23 +297,47 @@ def update_lbfgs_matrices(
         # the n x m correction matrices
 
         # 1) Update theta
+        sk = X[-1] - X[-2]
         yk = G[-1] - G[-2]
         # sk = X[-1] - X[-2]
-        sTy = (X[-1] - X[-2]).dot(yk)  # type: ignore
-        yTy = (yk).dot(yk)  # type: ignore
+        sTy = sk @ yk  # type: ignore
+        yTy = yk @ yk  # type: ignore
         mats.theta = yTy / sTy
 
+        m = len(X) - 1
+        n = np.size(X[-1])
+
         # Update the lbfgsb matrices
-        mats.S = np.diff(np.array(X), axis=0).T  # shape (n, m)
-        mats.Y = np.diff(np.array(G), axis=0).T  # shape (n ,m)
+        if is_force_update:
+            mats.S = np.diff(np.array(X), axis=0).T  # shape (n, m)
+            mats.Y = np.diff(np.array(G), axis=0).T  # shape (n ,m)
+        else:
+            if np.shape(mats.S)[1] == m:
+                # shift left
+                mats.S[:, :-1] = mats.S[:, 1:]
+                mats.Y[:, :-1] = mats.Y[:, 1:]
+            else:
+                _S = np.zeros((n, m), dtype=np.float64)
+                _Y = np.zeros((n, m), dtype=np.float64)
+                _S[:, :-1] = mats.S[:, :]
+                _Y[:, :-1] = mats.Y[:, :]
+                mats.S = _S
+                mats.Y = _Y
+            # append newest column
+            mats.S[:, -1] = sk
+            mats.Y[:, -1] = yk
+
         STS = mats.S.T @ mats.S  # shape (m, m)
-        mats.L = mats.S.T @ mats.Y
+        SY = mats.S.T @ mats.Y
         # We can build a dense matrix because shape is (m, m) with m usually small ~10
-        mats.D = np.diag(np.diag(mats.L))  # shape (m, m)
-        mats.L = np.tril(mats.L, -1)  # shape (m, m)
+        mats.D = np.diag(np.diag(SY))  # shape (m, m)
+        mats.L = np.tril(SY, -1)  # shape (m, m)
 
         # W = [Yk, \theta Sk]
-        mats.W = np.hstack([mats.Y, mats.theta * mats.S])  # shape (n, 2m)
+        n, m = np.shape(mats.S)
+        mats.W = np.zeros((n, 2 * m))
+        mats.W[:, :m] = mats.Y
+        mats.W[:, m:] = mats.theta * mats.S  # shape (n, 2m)
 
         # To avoid forming the limited-memory iteration matrix Bk and allow fast
         # matrix vector products, we represent it as eq. (3.2) [1].
@@ -295,50 +364,6 @@ def update_lbfgs_matrices(
             )
 
     return mats
-
-
-def update_X_and_G(
-    xk: NDArrayFloat,
-    gk: NDArrayFloat,
-    X: Deque[NDArrayFloat],
-    G: Deque[NDArrayFloat],
-    maxcor: int,
-    eps: float = 2.2e-16,
-) -> bool:
-    """
-
-    Parameters
-    ----------
-    xk : NDArrayFloat
-        New adjusted values vector.
-    gk : NDArrayFloat
-        New gradient vector.
-    X : Deque[NDArrayFloat]
-        Sequence of past adjusted values vectors respecting the strong wolfe conditions.
-    G : Deque[NDArrayFloat]
-        Sequence of past gradient vectors respecting the strong wolfe conditions.
-    maxcor : int
-        Maximum number of corrections stored (m).
-    eps : float, optional
-        Positive stability parameter for accepting current step for updating.
-        By default 2.2e-16.
-    Returns
-    -------
-    bool
-        True if the matrices have been updated, False otherwise.
-    """
-    if not is_update_X_and_G(xk, gk, X[-1], G[-1], eps):
-        return False
-
-    X.append(xk)
-    G.append(gk)
-    # maxcor is the number of corrections m (see S and Y shapes),
-    # so we must keep one more gradient and parameter vectors.
-    if len(X) > maxcor + 1:
-        X.popleft()
-        G.popleft()
-
-    return True
 
 
 def is_update_X_and_G(
@@ -380,9 +405,106 @@ def is_update_X_and_G(
     # whenever the initial approximation B0 is positive definite and sT k yk > 0.
     # We discuss these issues further in Chapter 6. (See Numerical optimization in
     # Noecedal and Wright)
-    if sTy > eps * yTy:
-        return True
-    return False
+    return sTy > eps * yTy
+
+
+@njit(cache=True)
+def is_update_X_and_G_numba(
+    xk: NDArrayFloat,
+    gk: NDArrayFloat,
+    x_old: NDArrayFloat,
+    g_old: NDArrayFloat,
+    eps: float = 2.2e-16,
+) -> bool:
+    """
+    Update the sequence of parameters X and gradients G with a strong wolfe condition.
+
+    Parameters
+    ----------
+    xk : NDArrayFloat
+        New adjusted values vector (at iteration k).
+    gk : NDArrayFloat
+        New gradient vector (at iteration k).
+    x_old : NDArrayFloat
+        Previous adjusted values vector (at iteration k-1).
+    g_old : NDArrayFloat
+        Previous gradient vector (at iteration k-1).
+    maxcor : int
+        Maximum number of corrections stored (m).
+    eps : float, optional
+        Positive stability parameter for accepting current step for updating.
+        By default 2.2e-16.
+    Returns
+    -------
+    bool
+        Whether the current step as been accepted.
+    """
+    sTy = 0.0
+    yTy = 0.0
+    for i in range(xk.size):
+        y = gk[i] - g_old[i]
+        sTy += (xk[i] - x_old[i]) * y
+        yTy += y * y
+
+    # See eq. (3.9) in [1].
+    # One can show that BFGS update (2.19) generates positive definite approximations
+    # whenever the initial approximation B0 is positive definite and sT k yk > 0.
+    # We discuss these issues further in Chapter 6. (See Numerical optimization in
+    # Noecedal and Wright)
+    return sTy > eps * yTy
+
+
+def update_X_and_G(
+    xk: NDArrayFloat,
+    gk: NDArrayFloat,
+    X: Deque[NDArrayFloat],
+    G: Deque[NDArrayFloat],
+    maxcor: int,
+    eps: float = 2.2e-16,
+    is_use_numba_jit: bool = False,
+) -> bool:
+    """
+
+    Parameters
+    ----------
+    xk : NDArrayFloat
+        New adjusted values vector.
+    gk : NDArrayFloat
+        New gradient vector.
+    X : Deque[NDArrayFloat]
+        Sequence of past adjusted values vectors respecting the strong wolfe conditions.
+    G : Deque[NDArrayFloat]
+        Sequence of past gradient vectors respecting the strong wolfe conditions.
+    maxcor : int
+        Maximum number of corrections stored (m).
+    eps : float, optional
+        Positive stability parameter for accepting current step for updating.
+        By default 2.2e-16.
+    is_use_numba_jit: bool
+        Whether to use `numba` just-in-time compilation to speed-up the computation
+        intensive part of the algorithm. The default is False.
+
+    Returns
+    -------
+    bool
+        True if the matrices have been updated, False otherwise.
+    """
+    if is_use_numba_jit:
+        if not is_update_X_and_G_numba(xk, gk, X[-1], G[-1], eps):
+            return False
+    else:
+        if not is_update_X_and_G(xk, gk, X[-1], G[-1], eps):
+            return False
+
+    X.append(xk)
+    G.append(gk)
+    # maxcor is the number of corrections m (see S and Y shapes),
+    # so we must keep one more gradient and parameter vectors.
+    if len(X) > maxcor + 1:
+        X.popleft()
+        G.popleft()
+
+    return True
 
 
 def make_X_and_G_respect_strong_wolfe(
@@ -390,6 +512,7 @@ def make_X_and_G_respect_strong_wolfe(
     G: Deque[NDArrayFloat],
     eps: float = 2.2e-16,
     logger: Optional[logging.Logger] = None,
+    is_use_numba_jit: bool = False,
 ) -> Tuple[Deque[NDArrayFloat], Deque[NDArrayFloat]]:
     """
 
@@ -405,6 +528,9 @@ def make_X_and_G_respect_strong_wolfe(
     logger: Optional[Logger], optional
         :class:`logging.Logger` instance. If None, nothing is displayed, no matter the
         value of `iprint`, by default None.
+    is_use_numba_jit: bool
+        Whether to use `numba` just-in-time compilation to speed-up the computation
+        intensive part of the algorithm. The default is False.
 
     Returns
     -------

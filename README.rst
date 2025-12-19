@@ -145,11 +145,54 @@ See all use cases in the tutorials section of the `documentation <https://lbfgsb
 Performance
 ===========
 
-Although memory consumption and computation time are acceptable thanks to the use of numpy and vectorization,
-note that the code is expected to be much slower than the scipy version
-(`originally in Fortran77, and ported to C since v1.15.0 <https://docs.scipy.org/doc/scipy/release/1.15.0-notes.html#scipy-optimize-improvements>`_).
-It will remain negligeable for small size problems or if the computation time is dominated by the objective function and its gradient evaluation.
-Especially, it provides unique features currently not supported by any other implementations.
+Although memory usage and runtime remain reasonable thanks to NumPy and extensive
+vectorization, a pure Python implementation is inherently slower and more memory-intensive
+than the SciPy reference implementation. The latter is written in low-level languages
+(`originally Fortran 77 and, since SciPy v1.15.0, ported to C <https://docs.scipy.org/doc/scipy/release/1.15.0-notes.html#scipy-optimize-improvements>`_)) and therefore benefits
+from decades of compiler and library-level optimizations.
+
+In practice, this performance gap is negligible for small- to medium-scale problems,
+or when the overall runtime is dominated by evaluations of the objective function and
+its gradient rather than by the optimization routine itself.
+
+To mitigate the overhead of Python in performance-critical sections, we provide a
+Numba JIT-compiled implementation of the most expensive components of the algorithm.
+This approach significantly reduces Python overhead and brings performance close to
+that of SciPy for large-scale problems (2 fold speed up for 1M parameters), while still preserving the additional flexibility and features offered
+by our implementation. The only overhead introduced is a one-time LLVM compilation
+during the first call; subsequent calls benefit from Numba’s caching mechanism.
+
+Numba acceleration is enabled by default and can be disabled via the boolean
+parameter `is_use_numba_jit`. If this option is set to True but Numba is not available,
+a warning is issued and the code automatically falls back to the non-JIT implementation.
+
+.. code-block:: python
+
+   res = minimize_lbfgsb(
+     x0=x0, fun=rosenbrock, jac=rosenbrock_grad, bounds=bounds, ftol=1e-5, gtol=1e-5, is_use_numba_jit=False
+   )
+
+Note that numba comes as an optional dependency and should be installed in one of the following ways:
+
+.. code-block::
+
+    pip install lbfgsb[numba]
+
+.. code-block::
+
+    pip install lbfgsb numba
+
+Or alternatively using conda
+
+.. code-block::
+
+    conda install lbfgsb[numba]
+
+.. code-block::
+
+    conda install lbfgsb numba
+
+If numba is not found in your environement, a RunTime warning will be raised.
 
 ===============
 Unique features

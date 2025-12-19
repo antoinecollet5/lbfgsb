@@ -38,17 +38,20 @@ References
 
 import copy
 import logging
+import warnings
 from collections import deque
 from dataclasses import dataclass
 from typing import Callable, Deque, Optional, Tuple, Union
 
 import numpy as np
+from numpy.typing import ArrayLike
 from scipy.optimize import (
     LbfgsInvHessProduct,  # noqa : F401
     OptimizeResult,
 )
 from typing_extensions import Protocol  # support python 3.7
 
+from lbfgsb._numba_helpers import NUMBA_AVAILABLE
 from lbfgsb.base import (
     clip2bounds,
     count_var_at_bounds,
@@ -114,7 +117,7 @@ def minimize_lbfgsb(
             Tuple[float, float, NDArrayFloat, Deque[NDArrayFloat]],
         ]
     ] = None,
-    bounds: Optional[NDArrayFloat] = None,
+    bounds: Optional[ArrayLike] = None,
     checkpoint: Optional[OptimizeResult] = None,
     maxcor: int = 10,
     ftarget: Optional[Union[float, Callable[[], float]]] = None,
@@ -133,7 +136,8 @@ def minimize_lbfgsb(
     eps_SY: float = 2.2e-16,
     iprint: int = -1,
     logger: Optional[logging.Logger] = None,
-    is_check_factorization: bool = False,
+    is_check_factorizations: bool = False,
+    is_use_numba_jit: bool = True,
 ) -> OptimizeResult:
     r"""
     Solves bound constrained optimization problems by using the compact formula
@@ -315,8 +319,14 @@ def minimize_lbfgsb(
     logger: Optional[Logger], optional
         :class:`logging.Logger` instance. If None, nothing is displayed, no matter the
         value of `iprint`, by default None.
-    is_check_factorization: bool
+    is_check_factorizations: bool
         For development purposes only, leave to False. The default is False.
+    is_use_numba_jit: bool
+        Whether to use `numba` just-in-time compilation to speed-up the computation
+        intensive part of the algorithm. The expected speed-up is of the order
+        of 2-5 folds for large scale problems. If `numba` is not available,
+        a warning is raised and the algorithm falls back to a non jit version.
+        The default is True.
 
     Returns
     -------
@@ -335,6 +345,13 @@ def minimize_lbfgsb(
       FORTRAN routines for large scale bound constrained optimization (2011),
       ACM Transactions on Mathematical Software, 38, 1.
     """
+    if not NUMBA_AVAILABLE and is_use_numba_jit:
+        warnings.warn(
+            "`is_use_numba_jit` set to `True` (default) but numba cannot be imported!"
+            " Falling back to pure python (slower)."
+        )
+        is_use_numba_jit = False
+
     lb, ub = get_bounds(x0, bounds)
     max_steplength_user: float = copy.copy(max_steplength)
 
@@ -446,9 +463,10 @@ def minimize_lbfgsb(
             G,
             maxcor,
             mats,
-            is_force_update=False,
+            is_force_update=True,
             eps=eps_SY,
-            is_check_factorization=is_check_factorization,
+            is_check_factorization=is_check_factorizations,
+            is_use_numba_jit=is_use_numba_jit,
         )
     else:
         # Store first res to X and G
@@ -478,17 +496,11 @@ def minimize_lbfgsb(
             logger.info("\n")
             logger.info(f"ITERATION {istate.nit + 1}\n")
 
-        f0_old = copy.copy(f0)
+        f0_old = f0 + 0.0  # copy
 
         # find cauchy point
         x_cp, c = get_cauchy_point(
-            x,
-            grad,
-            lb,
-            ub,
-            mats,
-            iprint,
-            logger,
+            x, grad, lb, ub, mats, iprint, logger, is_use_numba_jit=is_use_numba_jit
         )
 
         # Get the free variables for the GCP
@@ -508,7 +520,8 @@ def minimize_lbfgsb(
             lb,
             ub,
             mats,
-            is_check_factorizations=is_check_factorization,
+            is_check_factorizations=is_check_factorizations,
+            is_use_numba_jit=is_use_numba_jit,
         )
         d = xbar - x
 
@@ -531,6 +544,7 @@ def minimize_lbfgsb(
             min(maxls, maxfun - sf.nfev),
             iprint,
             logger,
+            is_use_numba_jit=is_use_numba_jit,
         )
         if steplength is None:
             if len(X) == 1:
@@ -576,10 +590,7 @@ def minimize_lbfgsb(
 
                 # We must check if the updated G satisfy the strong wolfe condition
                 X, G = make_X_and_G_respect_strong_wolfe(
-                    X,
-                    G,
-                    eps_SY,
-                    logger=logger,
+                    X, G, eps_SY, logger=logger, is_use_numba_jit=is_use_numba_jit
                 )
 
             mats = update_lbfgs_matrices(
@@ -591,7 +602,8 @@ def minimize_lbfgsb(
                 mats,
                 is_force_update=False,
                 eps=eps_SY,
-                is_check_factorization=is_check_factorization,
+                is_check_factorization=is_check_factorizations,
+                is_use_numba_jit=is_use_numba_jit,
             )
 
             # callback is a user defined mechanism to stop optimization

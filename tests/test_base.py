@@ -1,6 +1,7 @@
 """Tests for base functions."""
 
 import logging
+import re
 from contextlib import nullcontext as does_not_raise
 from typing import Sequence
 
@@ -37,7 +38,12 @@ from lbfgsb.types import NDArrayFloat
         [
             np.array([1.0]),
             np.array([]),
-            pytest.raises(ValueError, match="Length of x0 != length of bounds"),
+            pytest.raises(
+                ValueError,
+                match=re.escape(
+                    "Bounds have shape ((0,)), while shape (1, 2) is expected!"
+                ),
+            ),
         ],
         [
             np.array([0, 0, 0]),

@@ -31,6 +31,7 @@ import scipy as sp
 from packaging.version import Version
 from scipy import __version__ as spversion
 
+from lbfgsb._numba_helpers import njit
 from lbfgsb.scalar_function import ScalarFunction
 from lbfgsb.types import NDArrayFloat
 
@@ -92,6 +93,39 @@ def max_allowed_steplength(
         return min(max_steplength, np.nanmin(_tmp[np.isfinite(_tmp)]))
 
 
+@njit(cache=True, fastmath=True)
+def max_allowed_steplength_numba(
+    x: NDArrayFloat,
+    d: NDArrayFloat,
+    lb: NDArrayFloat,
+    ub: NDArrayFloat,
+    max_steplength: float,
+    n_iter: int,
+):
+    """See :function:`max_allowed_steplength_numba`."""
+    if n_iter == 0:
+        return 1.0
+
+    alpha = max_steplength
+    found = False
+
+    n = x.size
+    for i in range(n):
+        di = d[i]
+        if di != 0.0:
+            if di > 0.0:
+                tmp = (ub[i] - x[i]) / di
+            else:
+                tmp = (lb[i] - x[i]) / di
+
+            if tmp >= 0.0:
+                if not found or tmp < alpha:
+                    alpha = tmp
+                    found = True
+
+    return alpha
+
+
 def line_search(
     x0: NDArrayFloat,
     f0: float,
@@ -111,6 +145,7 @@ def line_search(
     logger: Optional[logging.Logger] = None,
     isave: NDArrayFloat = np.zeros((2,), np.intc),
     dsave: NDArrayFloat = np.zeros((13,), np.float64),
+    is_use_numba_jit: bool = False,
 ) -> Optional[float]:
     r"""
     Find a step that satisfies both decrease condition and a curvature condition.
@@ -203,6 +238,9 @@ def line_search(
     logger: Optional[Logger], optional
         :class:`logging.Logger` instance. If None, nothing is displayed, no matter the
         value of `iprint`, by default None.
+    is_use_numba_jit: bool
+        Whether to use `numba` just-in-time compilation to speed-up the computation
+        intensive part of the algorithm. The default is False.
 
     Returns
     -------
@@ -223,10 +261,14 @@ def line_search(
     """
 
     # steplength_0 = 1 if max_steplength > 1 else 0.5 * max_steplength
-    max_steplength = max_allowed_steplength(
-        x0, d, lb, ub, max_steplength_user, above_iter
-    )
-
+    if is_use_numba_jit:
+        max_steplength = max_allowed_steplength_numba(
+            x0, d, lb, ub, max_steplength_user, above_iter
+        )
+    else:
+        max_steplength = max_allowed_steplength(
+            x0, d, lb, ub, max_steplength_user, above_iter
+        )
     dphi0 = g0.dot(d)
 
     if above_iter == 0 and not is_boxed:

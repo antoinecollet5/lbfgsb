@@ -22,13 +22,13 @@ import logging
 from typing import Optional, Sequence, Tuple
 
 import numpy as np
-from scipy.optimize._constraints import old_bound_to_new
+from numpy.typing import ArrayLike
 
 from lbfgsb.types import NDArrayFloat
 
 
 def get_bounds(
-    x0: NDArrayFloat, bounds: Optional[NDArrayFloat]
+    x0: NDArrayFloat, bounds: Optional[ArrayLike]
 ) -> Tuple[NDArrayFloat, NDArrayFloat]:
     """
     Return the lower and upper bounds arrays.
@@ -36,9 +36,9 @@ def get_bounds(
     Parameters
     ----------
     x0 : NDArrayFloat
-        TODO: x0 can be or an ensemble or a vector. add shapes.
-    bounds : Optional[NDArrayFloat]
-        TODO.
+        Vector of unknows to optimize.
+    bounds : Optional[ArrayLike]
+        Array like with shape (n, 2), n being the number of parameters to optimize.
 
     Returns
     -------
@@ -58,11 +58,20 @@ def get_bounds(
     if n == 0:
         raise ValueError("x0 cannot be an empty vector!")
     if bounds is None:
-        bounds = np.repeat(np.array([(-np.inf, np.inf)]), n, axis=0)
-    if len(bounds) != n:
-        raise ValueError("Length of x0 != length of bounds")
+        return np.repeat(-np.inf, n), np.repeat(np.inf, n)
 
-    lb, ub = old_bound_to_new(bounds)
+    # make sure than None are converted to nan
+    _bounds = np.asarray(bounds, dtype=np.float64)
+    if np.shape(_bounds) != (n, 2):
+        raise ValueError(
+            f"Bounds have shape ({np.shape(_bounds)}), while shape "
+            f"({n}, 2) is expected!"
+        )
+
+    lb, ub = _bounds.T
+    # replace nan by inf
+    lb[np.isnan(lb)] = -np.inf
+    ub[np.isnan(ub)] = np.inf
 
     # check bounds
     if (lb > ub).any():

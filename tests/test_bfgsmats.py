@@ -6,6 +6,8 @@ import numpy as np
 import pytest
 from lbfgsb.bfgsmats import (
     LBFGSB_MATRICES,
+    bmv,
+    bmv_numba,
     is_update_X_and_G,
     make_X_and_G_respect_strong_wolfe,
     update_X_and_G,
@@ -38,7 +40,7 @@ def test_matrices(n: int, exception) -> None:
             np.array([0.0, 0.0]),
             np.array([1.0, 1.0]),
             np.array([0.0, 0.0]),
-            False,
+            np.False_,
         ),
     ),
 )
@@ -93,4 +95,39 @@ def test_make_X_and_G_respect_strong_wolfe(
 ) -> None:
     np.testing.assert_allclose(
         make_X_and_G_respect_strong_wolfe(X, G, logger=logger), expected
+    )
+
+
+def random_triangular(
+    n: int,
+    seed: int = 0,
+) -> Tuple[NDArrayFloat, NDArrayFloat]:
+    """Generate random triangular LU factorizations."""
+    rng = np.random.default_rng(seed)
+
+    L = rng.standard_normal((n, n))
+    L = np.tril(L)
+    np.fill_diagonal(L, np.abs(np.diag(L)) + 1.0)
+
+    U = rng.standard_normal((n, n))
+    U = np.triu(U)
+    np.fill_diagonal(U, np.abs(np.diag(U)) + 1.0)
+
+    return L, U
+
+
+@pytest.mark.parametrize("n", [1, 2, 5, 10, 20, 40])
+def test_bmv_matches_scipy(n: int) -> None:
+    """Test that both bmv and the numba version return the same results."""
+    L, U = random_triangular(n, seed=n)
+    v: NDArrayFloat = np.random.randn(n)
+
+    ref: NDArrayFloat = bmv((L, U), v)
+    out: NDArrayFloat = bmv_numba(L, U, v)
+
+    np.testing.assert_allclose(
+        out,
+        ref,
+        rtol=1e-12,
+        atol=1e-12,
     )

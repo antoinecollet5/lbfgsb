@@ -25,13 +25,13 @@ Reference:
 constrained optimization.
 """
 
-import copy
 import logging
 from typing import Optional, Tuple
 
 import numpy as np
 
-from lbfgsb.bfgsmats import LBFGSB_MATRICES, bmv
+from lbfgsb._numba_helpers import njit
+from lbfgsb.bfgsmats import LBFGSB_MATRICES, bmv, bmv_numba
 from lbfgsb.types import NDArrayFloat, NDArrayInt
 
 
@@ -79,70 +79,18 @@ def display_start_point(
     logger.info(f"Distance to the stationary point =  {delta_t_min}")
 
 
-def get_cauchy_point(
+def _get_cauchy_point_numpy(
     x: NDArrayFloat,
     grad: NDArrayFloat,
     lb: NDArrayFloat,
     ub: NDArrayFloat,
-    mats: LBFGSB_MATRICES,
+    W: NDArrayFloat,
+    theta: float,
+    invMfactors: Tuple[NDArrayFloat, NDArrayFloat],
+    use_factor: bool,
     iprint: int,
     logger: Optional[logging.Logger] = None,
-) -> Tuple[NDArrayFloat, NDArrayFloat]:
-    r"""
-    Computes the generalized Cauchy point (GCP).
-
-    This is the Generalized Cauchy point procedure in section 4 of [1].
-
-    It is defined as the first local minimizer of the quadratic
-
-    .. math::
-        \[\langle grad,s\rangle + \frac{1}{2} \langle s,
-        (\theta I + WMW^\intercal)s\rangle\]
-
-    along the projected gradient direction .. math::`P_[l,u](x-\theta grad).`
-
-    Parameters
-    ----------
-    x : NDArrayFloat
-        Starting point for the GCP computation.
-    grad : NDArrayFloat
-        Gradient of fun with respect to x.
-    lb : NDArrayFloat
-        Lower bound vector.
-    ub : NDArrayFloat
-        Upper bound vector.
-    mats: LBFGSB_MATRICES
-        TODO.
-    iprint : int, optional
-        Controls the frequency of output. ``iprint < 0`` means no output;
-        ``iprint = 0``    print only one line at the last iteration;
-        ``0 < iprint < 99`` print also f and ``|proj g|`` every iprint iterations;
-        ``iprint >= 99``   print details of every iteration except n-vectors;
-    logger: Optional[Logger], optional
-        :class:`logging.Logger` instance. If None, nothing is displayed, no matter the
-        value of `iprint`, by default None.
-
-    Returns
-    -------
-    Tuple[NDArrayFloat, NDArrayFloat]
-        The array of Cauchy points and c = W @ (Zc - Zk).
-
-    References
-    ----------
-    * R. H. Byrd, P. Lu and J. Nocedal. A Limited Memory Algorithm for Bound
-      Constrained Optimization, (1995), SIAM Journal on Scientific and
-      Statistical Computing, 16, 5, pp. 1190-1208.
-    * C. Zhu, R. H. Byrd and J. Nocedal. L-BFGS-B: Algorithm 778: L-BFGS-B,
-      FORTRAN routines for large scale bound constrained optimization (1997),
-      ACM Transactions on Mathematical Software, 23, 4, pp. 550 - 560.
-    * J.L. Morales and J. Nocedal. L-BFGS-B: Remark on Algorithm 778: L-BFGS-B,
-      FORTRAN routines for large scale bound constrained optimization (2011),
-      ACM Transactions on Mathematical Software, 38, 1.
-    """
-    # Note: the variable names follow the FORTRAN original implementation
-    if iprint >= 99 and logger is not None:
-        logger.info("---------------- CAUCHY entered-------------------")
-
+):
     eps_f_sec = 1e-30
     x_cp: NDArrayFloat = x.copy()
 
@@ -169,7 +117,7 @@ def get_cauchy_point(
     sorted_t_idx: NDArrayInt = pos_idx[np.argsort(t[pos_idx])]
 
     # Initialization
-    p = mats.W.T @ d  # 2mn operations
+    p = W.T @ d  # 2mn operations
 
     # Initialize c = W'(xcp - x) = 0.
     c: NDArrayFloat = np.zeros(p.size)
@@ -178,15 +126,15 @@ def get_cauchy_point(
     f_prime: float = -d.dot(d)  # n operations
 
     # Initialize derivative f2.
-    f_second: float = -mats.theta * f_prime
-    f2_org: float = copy.deepcopy(f_second)
+    f_second: float = -theta * f_prime
+    f2_org: float = f_second + 0.0  # make a copy
 
     # Update f2 with - d^{T} @ W @ M @ W^{T} @ d = - p^{T} @ M @ p
     # old way: f2 = f2 - p.dot(M.dot(p))  # O(m^{2}) operations
     # new_way: not at first iteration -> invMfactors and M are worse zero.
     # And cho_solve produces nan so we use bmv
-    if mats.use_factor:
-        f_second = f_second - p.dot(bmv(mats.invMfactors, p))  # O(m^{2}) operations
+    if use_factor:
+        f_second = f_second - p.dot(bmv(invMfactors, p))  # O(m^{2}) operations
 
     # dtm in the fortran code
     delta_t_min: float = -f_prime / f_second
@@ -240,7 +188,7 @@ def get_cauchy_point(
             logger.info(f"Variable  {ibp + 1} is fixed.")
 
         c += delta_t * p
-        W_b = mats.W[ibp, :]
+        W_b = W[ibp, :]
         g_b = grad[ibp]
 
         # Update the derivative information
@@ -248,13 +196,13 @@ def get_cauchy_point(
         # f1 += delta_t * f2 + g_b * (g_b + theta * zb - W_b.dot(M.dot(c)))
         # f2 -= g_b * (g_b * theta + W_b.dot(M.dot(2 * p + g_b * W_b)))
         # 2) New way with the cholesky factorization
-        f_prime += delta_t * f_second + g_b * (g_b + mats.theta * zb)
-        f_second -= g_b * g_b * mats.theta
+        f_prime += delta_t * f_second + g_b * (g_b + theta * zb)
+        f_second -= g_b * g_b * theta
 
         # First iteration -> invMfactors and M are worse zero.
         # And cho_solve produces nan
-        if mats.use_factor:
-            invMWb = bmv(mats.invMfactors, W_b)
+        if use_factor:
+            invMWb = bmv(invMfactors, W_b)
             f_prime -= g_b * invMWb.dot(c)
             f_second -= g_b * (2.0 * invMWb.dot(p) + g_b * invMWb.dot(W_b))
 
@@ -266,7 +214,7 @@ def get_cauchy_point(
         p += g_b * W_b
         d[ibp] = 0
         delta_t_min = -f_prime / f_second
-        t_old = copy.copy(t_cur)
+        t_old = t_cur + 0.0  # copy
 
         _i += 1
         if _i + 1 < nbreak:
@@ -292,7 +240,208 @@ def get_cauchy_point(
     mask = t >= t_cur
     x_cp[mask] = x[mask] + t_old * d[mask]
 
+    return x_cp, c + delta_t_min * p
+
+
+@njit(cache=True)
+def _get_cauchy_point_numba(
+    x: NDArrayFloat,
+    grad: NDArrayFloat,
+    lb: NDArrayFloat,
+    ub: NDArrayFloat,
+    W: NDArrayFloat,
+    theta: float,
+    invMfactors: Tuple[NDArrayFloat, NDArrayFloat],
+    use_factor: bool,
+):
+    n = x.size
+    m = W.shape[1]
+    eps_f_sec = 1e-30
+
+    x_cp = x.copy()
+    t = np.empty(n)
+    d = np.empty(n)
+
+    # Breakpoints
+    for i in range(n):
+        gi = grad[i]
+        if gi < 0.0:
+            t[i] = (x[i] - ub[i]) / gi
+        elif gi > 0.0:
+            t[i] = (x[i] - lb[i]) / gi
+        else:
+            t[i] = np.inf
+
+        d[i] = -gi if t[i] != 0.0 else 0.0
+
+    # positive breakpoints
+    pos_idx = np.empty(n, dtype=np.int64)
+    k = 0
+    for i in range(n):
+        if t[i] > 0.0:
+            pos_idx[k] = i
+            k += 1
+
+    if k == 0:
+        return x_cp, np.zeros(m)
+
+    pos_idx = pos_idx[:k]
+    pos_idx = pos_idx[np.argsort(t[pos_idx])]
+
+    # initialization
+    p = W.T @ d
+    c = np.zeros(m)
+
+    f_prime = -np.dot(d, d)
+    f_second = -theta * f_prime
+    f2_org = f_second
+
+    if use_factor:
+        tmp = bmv_numba(*invMfactors, p)
+        f_second -= np.dot(p, tmp)
+
+    delta_t_min = -f_prime / f_second
+
+    t_old = 0.0
+    ibp = pos_idx[0]
+    t_cur = t[ibp]
+    delta_t = t_cur
+    i = 0
+
+    while i < k:
+        if delta_t_min < delta_t:
+            break
+
+        zb = ub[ibp] - x[ibp] if d[ibp] > 0 else lb[ibp] - x[ibp]
+        x_cp[ibp] = x[ibp] + zb
+
+        c += delta_t * p
+
+        Wb = W[ibp]
+        gb = grad[ibp]
+
+        f_prime += delta_t * f_second + gb * (gb + theta * zb)
+        f_second -= gb * gb * theta
+
+        if use_factor:
+            invMWb = bmv_numba(*invMfactors, Wb)
+            f_prime -= gb * np.dot(invMWb, c)
+            f_second -= gb * (2.0 * np.dot(invMWb, p) + gb * np.dot(invMWb, Wb))
+
+        if f_second < eps_f_sec * f2_org:
+            f_second = eps_f_sec * f2_org
+
+        p += gb * Wb
+        d[ibp] = 0.0
+
+        delta_t_min = -f_prime / f_second
+        t_old = t_cur
+
+        i += 1
+        if i < k:
+            ibp = pos_idx[i]
+            t_cur = t[ibp]
+        else:
+            t_cur = np.inf
+
+        delta_t = t_cur - t_old
+
+    delta_t_min = max(0.0, delta_t_min)
+    t_old += delta_t_min
+
+    for i in range(n):
+        if t[i] >= t_cur:
+            x_cp[i] = x[i] + t_old * d[i]
+
     c += delta_t_min * p
+    return x_cp, c
+
+
+def get_cauchy_point(
+    x: NDArrayFloat,
+    grad: NDArrayFloat,
+    lb: NDArrayFloat,
+    ub: NDArrayFloat,
+    mats: LBFGSB_MATRICES,
+    iprint: int,
+    logger: Optional[logging.Logger] = None,
+    is_use_numba_jit: bool = False,
+) -> Tuple[NDArrayFloat, NDArrayFloat]:
+    r"""
+    Computes the generalized Cauchy point (GCP).
+
+    This is the Generalized Cauchy point procedure in section 4 of [1].
+
+    It is defined as the first local minimizer of the quadratic
+
+    .. math::
+        \[\langle grad,s\rangle + \frac{1}{2} \langle s,
+        (\theta I + WMW^\intercal)s\rangle\]
+
+    along the projected gradient direction .. math::`P_[l,u](x-\theta grad).`
+
+    Parameters
+    ----------
+    x : NDArrayFloat
+        Starting point for the GCP computation.
+    grad : NDArrayFloat
+        Gradient of fun with respect to x.
+    lb : NDArrayFloat
+        Lower bound vector.
+    ub : NDArrayFloat
+        Upper bound vector.
+    mats: LBFGSB_MATRICES
+        Wrapper for L-BFGS-B matrices.
+    iprint : int, optional
+        Controls the frequency of output. ``iprint < 0`` means no output;
+        ``iprint = 0``    print only one line at the last iteration;
+        ``0 < iprint < 99`` print also f and ``|proj g|`` every iprint iterations;
+        ``iprint >= 99``   print details of every iteration except n-vectors;
+    logger: Optional[Logger], optional
+        :class:`logging.Logger` instance. If None, nothing is displayed, no matter the
+        value of `iprint`, by default None.
+    is_use_numba_jit: bool
+        Whether to use `numba` just-in-time compilation to speed-up the computation
+        intensive part of the algorithm. The default is False.
+
+    Returns
+    -------
+    Tuple[NDArrayFloat, NDArrayFloat]
+        The array of Cauchy points and c = W @ (Zc - Zk).
+
+    References
+    ----------
+    * R. H. Byrd, P. Lu and J. Nocedal. A Limited Memory Algorithm for Bound
+      Constrained Optimization, (1995), SIAM Journal on Scientific and
+      Statistical Computing, 16, 5, pp. 1190-1208.
+    * C. Zhu, R. H. Byrd and J. Nocedal. L-BFGS-B: Algorithm 778: L-BFGS-B,
+      FORTRAN routines for large scale bound constrained optimization (1997),
+      ACM Transactions on Mathematical Software, 23, 4, pp. 550 - 560.
+    * J.L. Morales and J. Nocedal. L-BFGS-B: Remark on Algorithm 778: L-BFGS-B,
+      FORTRAN routines for large scale bound constrained optimization (2011),
+      ACM Transactions on Mathematical Software, 38, 1.
+    """
+    # Note: the variable names follow the FORTRAN original implementation
+    if iprint >= 99 and logger is not None:
+        logger.info("---------------- CAUCHY entered-------------------")
+
+    if is_use_numba_jit:
+        x_cp, c = _get_cauchy_point_numba(
+            x, grad, lb, ub, mats.W, mats.theta, mats.invMfactors, mats.use_factor
+        )
+    else:
+        x_cp, c = _get_cauchy_point_numpy(
+            x,
+            grad,
+            lb,
+            ub,
+            mats.W,
+            mats.theta,
+            mats.invMfactors,
+            mats.use_factor,
+            iprint,
+            logger,
+        )
 
     if logger is not None:
         if iprint > 100:

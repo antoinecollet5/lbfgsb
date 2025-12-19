@@ -10,9 +10,6 @@ the generalized Cauchy point.
 In the classical implementation of L-BFGS-B [1], the minimization is done by first
 ignoring the box constraints, followed by a line search.
 
-TODO: Our implementation is
-an exact minimization subject to the bounds, based on the BOXCQP algorithm [2].
-
 Functions
 ^^^^^^^^^
 
@@ -38,7 +35,8 @@ from typing import Optional, Tuple
 import numpy as np
 import scipy as sp
 
-from lbfgsb.bfgsmats import LBFGSB_MATRICES, bmv
+from lbfgsb._numba_helpers import njit
+from lbfgsb.bfgsmats import LBFGSB_MATRICES, bmv, bmv_numba
 from lbfgsb.types import NDArrayFloat, NDArrayInt
 
 
@@ -158,7 +156,7 @@ def form_k_from_za(
         YTZZTY = np.zeros((Y.shape[1], Y.shape[1]))
         STZZTY = np.zeros((Y.shape[1], Y.shape[1]))
     else:
-        ZZTY = np.zeros_like(Y)
+        ZZTY = np.zeros(np.shape(Y), dtype=np.float64)
         ZZTY[free_vars, :] = Y[free_vars, :]
         YTZZTY = Y.T @ ZZTY
         STZZTY = S.T @ ZZTY
@@ -166,7 +164,7 @@ def form_k_from_za(
     if len(active_vars) == 0:
         STAATS = np.zeros((S.shape[1], S.shape[1]))
     else:
-        AATS = np.zeros_like(S)
+        AATS = np.zeros(np.shape(S), dtype=np.float64)
         AATS[active_vars, :] = S[active_vars, :]
         STAATS = S.T @ AATS
 
@@ -218,6 +216,35 @@ def form_k_from_wm(
     return K @ N
 
 
+@njit(cache=True)
+def solve_triangular_numba(
+    L: NDArrayFloat, v: NDArrayFloat, lower: bool = True
+) -> NDArrayFloat:
+    """
+    Numba replacement for:
+        solve_triangular(U, lower=False)
+    """
+    n = v.size
+    y = np.empty(n)
+
+    if lower:
+        # Forward solve: L y = v
+        for i in range(n):
+            s = v[i]
+            for j in range(i):
+                s -= L[i, j] * y[j]
+            y[i] = s / L[i, i]
+    else:
+        # Backward solve: U p = y
+        for i in range(n - 1, -1, -1):
+            s = v[i]
+            for j in range(i + 1, n):
+                s -= L[i, j] * y[j]
+            y[i] = s / L[i, i]
+
+    return y
+
+
 def factorize_k(
     K: NDArrayFloat,
     is_assert_correct: bool = True,
@@ -256,17 +283,23 @@ def factorize_k(
     K12 = -K[:m, m:]
     K22 = K[m:, m:]
 
+    # LK is a lower triangle of the matrix factorization LK @ E @ LK.T
+    # Initiate the array
+    LK = np.zeros((2 * m, 2 * m), dtype=np.float64)
+
     # Form L, the lower part of LL' = D+Y' ZZ'Y/theta
     L11 = sp.linalg.cholesky(K11, lower=True, overwrite_a=False)
+    # Top-left
+    LK[:m, :m] = L11
 
     # then form L^-1(-L_a'+R_z') in the (1,2) block.
     L12 = sp.linalg.solve_triangular(L11, K12, lower=True, trans="N")
+    # Top-right
+    LK[m:, :m] = L12.T
 
     # Form L22 from S'AA'S*theta + (L^-1(-L_a'+R_z'))'L^-1(-L_a'+R_z')
-    L22 = sp.linalg.cholesky(K22 + L12.T @ L12, lower=True)
-
-    # LK is a lower triangle of the matrix factorization LK @ E @ LK.T
-    LK = np.hstack([np.vstack([L11, L12.T]), np.vstack([np.zeros(L12.shape), L22])])
+    # Bottom-right
+    LK[m:, m:] = sp.linalg.cholesky(K22 + L12.T @ L12, lower=True)
 
     # Test the factorization
     if is_assert_correct:
@@ -287,6 +320,7 @@ def subspace_minimization(
     ub: NDArrayFloat,
     mats: LBFGSB_MATRICES,
     is_check_factorizations: bool = False,
+    is_use_numba_jit: bool = False,
 ) -> NDArrayFloat:
     r"""
     Computes an approximate solution of the subspace problem.
@@ -318,9 +352,12 @@ def subspace_minimization(
     ub : NDArrayFloat
         Upper bound vector.
     mats: LBFGSB_MATRICES
-        TODO.
-    Z: spmatrix
-        Warning: it has shape (n, t)
+        Wrapper for BFGS matrices.
+    is_check_factorizations: bool
+        Whether to check the different factorizations performed. The default is False.
+    is_use_numba_jit: bool
+        Whether to use `numba` just-in-time compilation to speed-up the computation
+        intensive part of the algorithm. The default is False.
 
     Returns
     -------
@@ -345,8 +382,15 @@ def subspace_minimization(
 
     # d = (1/theta)r + (1/theta*2) Z'WK^(-1)W'Z r.
 
-    if len(free_vars) == 0:
+    if free_vars.size == 0:
         return xc
+
+    # ------------------------------------------------------------------
+    # Pre-slice everything ONCE (major speedup)
+    # ------------------------------------------------------------------
+    xc_free = xc[free_vars]
+    ub_free = ub[free_vars]
+    lb_free = lb[free_vars]
 
     # Same as W.T.dot(Z) but numpy does not handle correctly
     # numpy_array.dot(sparce_matrix), so we give the responsibility to the
@@ -354,7 +398,8 @@ def subspace_minimization(
     # Note that here, Z is suppose to have a shape (t, n) with t the number
     # of free_vars and n the number of variables.
     # WTZ = W.T.dot(Z.todense()) works but this is much less efficient
-    WTZ = mats.W[free_vars, :].T
+    W_free = mats.W[free_vars, :]
+    WTZ = W_free.T  # shape (m, t)
 
     r = grad + mats.theta * (xc - x)
     # At iter 0, M is [[0.0]] and so is invMfactors
@@ -362,12 +407,16 @@ def subspace_minimization(
         r -= mats.W.dot(bmv(mats.invMfactors, c))
 
     rHat = r[free_vars]
-    v = WTZ.dot(rHat)
+    v = WTZ @ rHat
 
     # Factorization of M^{-1}(I - 1/theta M WT Z @ ZT @ W))
     if mats.use_factor:
         K = form_k(
-            free_vars, active_vars, WTZ, mats, is_assert_correct=is_check_factorizations
+            free_vars,
+            active_vars,
+            WTZ,
+            mats,
+            is_assert_correct=is_check_factorizations,
         )
         # The assertion includes minor overhead
         LK: Optional[NDArrayFloat] = factorize_k(
@@ -379,19 +428,29 @@ def subspace_minimization(
     if LK is not None:
         # LK is the lowest triangle of the cholesky factorization
         # of (I - 1/theta M WT Z @ ZT @ W)^{-1} M.
-        v = sp.linalg.solve_triangular(LK, v, lower=True)
+        if is_use_numba_jit:
+            v = solve_triangular_numba(LK, v, lower=True)
+        else:
+            v = sp.linalg.solve_triangular(LK, v, lower=True)
         v[: int(LK.shape[0] / 2)] *= -1
-        v = sp.linalg.solve_triangular(LK.T, v, lower=False)
+        if is_use_numba_jit:
+            v = solve_triangular_numba(LK.T, v, lower=False)
+        else:
+            v = sp.linalg.solve_triangular(LK.T, v, lower=False)
     else:
         # This is less efficient but it should only happen if LK is None, i.e., at
         # iteration 0
         if mats.use_factor:
-            v = bmv(mats.invMfactors, v)
-            N = -bmv(mats.invMfactors, invThet * WTZ.dot(np.transpose(WTZ)))
+            if is_use_numba_jit:
+                v = bmv_numba(*mats.invMfactors, v)
+                N = -bmv_numba(*mats.invMfactors, invThet * (WTZ @ WTZ.T))
+            else:
+                v = bmv(mats.invMfactors, v)
+                N = -bmv(mats.invMfactors, invThet * (WTZ @ WTZ.T))
         else:
             M = mats.invMfactors[0] @ mats.invMfactors[1]
-            v = M.dot(v)
-            N = -M.dot(invThet * WTZ.dot(np.transpose(WTZ)))
+            v = M @ v
+            N = -M @ (invThet * WTZ @ WTZ.T)
         # Add the identity matrix: this is the same as N = np.eye(N.shape[0]) - M.dot(N)
         # but much faster
         np.fill_diagonal(N, N.diagonal() + 1)
@@ -399,23 +458,25 @@ def subspace_minimization(
 
     # Careful, there is an error in the original paper (the negative sign is
     # missing) !
-    dHat = -invThet * (rHat + invThet * np.transpose(WTZ).dot(v))
+    dHat = -invThet * (rHat + invThet * (WTZ.T @ v))
 
     # We can then backtrack towards the feasible region, if necessary, to obtain
     # alpha a positive scalar between 0 and 1 -> Eq (5.8)
-    mask = dHat != 0
+    mask = dHat != 0.0
+    if mask.any():
+        d = dHat[mask]
+        xc_m = xc_free[mask]
 
-    alpha_star = min(
-        1.0,
-        np.nanmin(
-            np.where(
-                dHat[mask] > 0, (ub - xc)[free_vars][mask], (lb - xc)[free_vars][mask]
-            )
-            / dHat[mask]
-            if dHat[mask].size != 0
-            else 1.0
-        ),
-    )
+        step = np.empty_like(d)
+
+        pos = d > 0.0
+        step[pos] = (ub_free[mask][pos] - xc_m[pos]) / d[pos]
+        step[~pos] = (lb_free[mask][~pos] - xc_m[~pos]) / d[~pos]
+
+        alpha_star = min(1.0, step.min())
+    else:
+        alpha_star = 1.0
+
     # Eq (5.2) -> update free variables only
-    xc[free_vars] += alpha_star * dHat
+    xc[free_vars] = xc_free + alpha_star * dHat
     return xc

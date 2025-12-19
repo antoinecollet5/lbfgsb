@@ -62,7 +62,8 @@ def update_fun_def_does_nothing(
     return f0, f0_old, grad, G
 
 
-def test_minimize_quad() -> None:
+@pytest.mark.parametrize("is_use_numba_jit", ((True,), (False,)))
+def test_minimize_quad(is_use_numba_jit: bool) -> None:
     # 1) parameters definition
     ftol = 1e-5
     gtol = 1e-5
@@ -82,7 +83,8 @@ def test_minimize_quad() -> None:
         update_fun_def=update_fun_def_does_nothing,
         logger=logger,
         iprint=1000,
-        is_check_factorization=True,
+        is_check_factorizations=True,
+        is_use_numba_jit=is_use_numba_jit,
     )
 
     # 3) Check the results correctness
@@ -118,8 +120,8 @@ def grad_rosenbrock(x) -> NDArrayFloat:
     g[1] = 200 * (-(x[0] ** 2) + x[1])
     return g
 
-
-def test_minimize_rozenbrock() -> None:
+@pytest.mark.parametrize("is_use_numba_jit", ((True,), (False,)))
+def test_minimize_rozenbrock(is_use_numba_jit: bool) -> None:
     # 1) parameters definition
     ftol = 1e-5
     gtol = 1e-5
@@ -139,7 +141,8 @@ def test_minimize_rozenbrock() -> None:
         gtol=gtol,
         logger=logger,
         iprint=1000,
-        is_check_factorization=True,
+        is_check_factorizations=True,
+        is_use_numba_jit=is_use_numba_jit
     )
     x_opt = np.array([1, 1])
     np.testing.assert_allclose(x_opt, opt_rosenbrock.x, rtol=1e-3)
@@ -224,7 +227,7 @@ def test_early_stop() -> None:
     """Early stop because of target stop criterion."""
     x0 = np.array([2.5, -1.3])
     res = minimize_lbfgsb(
-        x0=x0, fun=quad, jac=grad_quad, ftarget=1000, is_check_factorization=True
+        x0=x0, fun=quad, jac=grad_quad, ftarget=1000, is_check_factorizations=True
     )
 
     assert res.nfev == 1
@@ -257,7 +260,7 @@ def test_abnormal_termination_linesearch(
         return 1.0 - 10 * np.exp(-10 * x)
 
     res = minimize_lbfgsb(
-        x0=x0, fun=func, jac=jac, maxls=5, is_check_factorization=True
+        x0=x0, fun=func, jac=jac, maxls=5, is_check_factorizations=True
     )
     assert res.message == expected_msg
     assert res.success is is_success
@@ -289,7 +292,7 @@ def test_checkpointing() -> None:
         gtol=gtol,
         logger=logger,
         iprint=1000,
-        is_check_factorization=True,
+        is_check_factorizations=True,
     )
 
     # test an empty checkpoint
@@ -323,7 +326,7 @@ def test_checkpointing() -> None:
         gtol=gtol,
         logger=logger,
         iprint=1000,
-        is_check_factorization=True,
+        is_check_factorizations=True,
         checkpoint=empty_checkpoint,
     )
 
@@ -351,7 +354,7 @@ def test_checkpointing() -> None:
             gtol=gtol,
             logger=logger,
             iprint=1000,
-            is_check_factorization=True,
+            is_check_factorizations=True,
             checkpoint=wrong_ckp,
         )
 
@@ -368,7 +371,7 @@ def test_checkpointing() -> None:
         gtol=gtol,
         logger=logger,
         iprint=1000,
-        is_check_factorization=True,
+        is_check_factorizations=True,
     )
 
     assert opt_rosenbrock2.nfev == 8
@@ -506,7 +509,7 @@ def test_user_callback() -> None:
         gtol=gtol,
         logger=logger,
         iprint=1000,
-        is_check_factorization=True,
+        is_check_factorizations=True,
         callback=_callback,
     )
 
