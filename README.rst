@@ -4,7 +4,7 @@ LBFGSB
 
 |License| |Stars| |Python| |PyPI| |Downloads| |Build Status| |Documentation Status| |Coverage| |Codacy| |Precommit: enabled| |Ruff| |Mypy| |DOI|
 
-A python impementation of the famous L-BFGS-B quasi-Newton solver [1].
+🐍 A python impementation of the famous L-BFGS-B quasi-Newton solver [1].
 
 This code is a python port of the famous implementation of Limited-memory
 Broyden-Fletcher-Goldfarb-Shanno (L-BFGS), algorithm 778 written in Fortran [2,3]
@@ -13,8 +13,8 @@ Note that this is not a wrapper like `minimize`` in scipy but a complete
 reimplementation (pure python).
 The original Fortran code can be found here: https://dl.acm.org/doi/10.1145/279232.279236
 
-Motivations
------------
+🎯 Motivations
+---------------
 
 Although there are many implementations or ports (wrappings) of the lbfgsb code,
 as evidenced by the list compiled by `Jonathan Schilling <https://github.com/jonathanschilling/L-BFGS-B>`_,
@@ -37,8 +37,8 @@ In this context, the objectives of this code are as follows:
 - add the possibility of modifying on-the-fly the gradient sequences stored in memory, an essential mechanism for the automatic and adaptive weighting of a possible regularization term, See (TODO). This is one of the initial motivation;
 - use a logging system rather than prints, for better integration within complex apps.
 
-References
-----------
+📚 References
+--------------
 [1] R. H. Byrd, P. Lu and J. Nocedal. A Limited Memory Algorithm for Bound
 Constrained Optimization, (1995), SIAM Journal on Scientific and
 Statistical Computing, 16, 5, pp. 1190-1208.
@@ -201,7 +201,7 @@ Or alternatively using conda
 If numba is not found in your environement, a RunTime warning will be raised.
 
 ===================
-🧠 Unique features
+🛠️ Unique features
 ===================
 
 Here are some of the unique features that this implementation provides (to the best of our knowledge in 2025).
@@ -312,8 +312,8 @@ Note that this time, we keep track of `nfev` and `njev`. In addition, the result
 a single run. This can be pretty useful if computing the objective function and its gradient is expensive but one
 is not so sure about what stopping criteria to use. TODO: add something about use case for scaling.
 
-Callback
---------
+✨ Callback
+------------
 
 Our implementation of L-BFGS-B allows to use several standard stop criteria:
 
@@ -365,8 +365,8 @@ yields
     njev: 10
     hess_inv: <2x2 LbfgsInvHessProduct with dtype=float64>
 
-Cost function update
---------------------
+✨ Cost function update
+------------------------
 
 Function to update the gradient sequence. This allows changing the objective function definition on the fly.
 In the first place this functionality is dedicated to regularized problems for which the
@@ -378,7 +378,7 @@ Hessian matching the new definition of `fun`, the gradient sequence must be upda
     ``update_fun_def(x, f0, f0_old, grad, x_deque, grad_deque)
     -> f0, f0_old, grad, updated grad_deque``
 
-Complete example with supporting paper coming Q1 2026.
+🏗️ Complete example with supporting paper coming Q1 2026.
 
 ===========
 🔑 License
