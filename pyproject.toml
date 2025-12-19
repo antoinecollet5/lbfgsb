@@ -90,7 +90,7 @@ tests = [
     "numdifftools",
 ]
 lint = ["pre-commit", "codespell>=2.1.0", "ruff"]
-install = ["pip, wheel"]
+install = ["pip", "wheel"]
 
 [tool.ruff]
 lint.select = [
