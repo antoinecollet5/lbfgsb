@@ -62,3 +62,10 @@ def test_multidim_rosenbrock() -> None:
     # Test the equality
     np.testing.assert_allclose(values, np.repeat(rosenbrock(x0), n))
     np.testing.assert_allclose(grads, np.repeat(rosenbrock_grad(x0), n).reshape(2, -1))
+
+    np.testing.assert_allclose(
+        rosenbrock_grad(x0),
+        nd.Gradient(rosenbrock, step=1e-5)(x0),
+        atol=1e-5,
+        rtol=1e-5,
+    )
