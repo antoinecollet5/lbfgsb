@@ -37,7 +37,6 @@ from typing import Optional, Tuple
 
 import numpy as np
 import scipy as sp
-from scipy.sparse import lil_matrix, spmatrix
 
 from lbfgsb.bfgsmats import LBFGSB_MATRICES, bmv
 from lbfgsb.types import NDArrayFloat, NDArrayInt
@@ -51,7 +50,7 @@ def get_freev(
     free_vars_old: Optional[NDArrayInt] = None,
     iprint: int = -1,
     logger: Optional[logging.Logger] = None,
-) -> Tuple[NDArrayInt, spmatrix, spmatrix]:
+) -> Tuple[NDArrayInt, NDArrayInt]:
     """
     Get the free variables and build sparse Z and A matrices.
 
@@ -90,24 +89,6 @@ def get_freev(
         ~np.isin(np.arange(n), free_vars)  # type: ignore
     ).nonzero()[0]
 
-    nb_free_vars: int = free_vars.size
-    nb_active_vars: int = active_vars.size
-
-    # See section 5 of [1]: We define Z to be the (n , t) matrix whose columns are
-    # unit vectors (i.e., columns of the identity matrix) that span the subspace of the
-    # free variables at zc.Similarly A denotes the (n, (n- t)) matrix of active
-    # constraint gradients at zc,which consists of n - t unit vectors.
-    # Note that A^{T}Z = 0 and that  AA^T + ZZ^T == I.
-
-    # We use sparse formats to save memory and get faster matrix products
-    Z = lil_matrix((n, nb_free_vars))
-    A = lil_matrix((n, nb_active_vars))
-    # Affect one
-    Z[free_vars, np.arange(nb_free_vars)] = 1
-    A[active_vars, np.arange(nb_active_vars)] = 1
-
-    # Test: we should have Z @ Z.T + A @ A.T == I
-
     # Some display
     # 1) Indicate which variable is leaving the free variables and which is
     # entering the free variables -> Not for the first iteration
@@ -126,19 +107,21 @@ def get_freev(
     if iprint > 99 and logger is not None:
         logger.info(f"{free_vars.size} variables are free at GCP, iter = {iter + 1}")
 
-    return free_vars, Z.tocsc(), A.tocsc()
+    return free_vars, active_vars
 
 
 def form_k(
-    Z: spmatrix,
-    A: spmatrix,
+    free_vars: NDArrayInt,
+    active_vars: NDArrayInt,
     WTZ: NDArrayFloat,
     mats: LBFGSB_MATRICES,
     is_assert_correct: bool = True,
 ) -> NDArrayFloat:
     """ """
     # Construct K = M^{-1}(I - 1/theta M WT Z @ ZT @ W))
-    K = form_k_from_za(Z, A, mats)
+    K = form_k_from_za(
+        free_vars, active_vars, mats.Y, mats.S, mats.D, mats.L, mats.theta
+    )
     if is_assert_correct:
         K_wm = form_k_from_wm(WTZ, mats.invMfactors, mats.theta)
         np.testing.assert_allclose(K, K_wm, atol=1e-8)
@@ -146,10 +129,13 @@ def form_k(
 
 
 def form_k_from_za(
-    Z: spmatrix,
-    A: spmatrix,
-    mats: LBFGSB_MATRICES,
-    logger: Optional[logging.Logger] = None,
+    free_vars: NDArrayInt,
+    active_vars: NDArrayInt,
+    Y: NDArrayFloat,
+    S: NDArrayFloat,
+    D: NDArrayFloat,
+    L: NDArrayFloat,
+    theta: float,
 ) -> NDArrayFloat:
     r"""
     Form the matrix K.
@@ -168,24 +154,29 @@ def form_k_from_za(
     Parameters
     ----------
     """
-    if Z.shape[0] == 0:
-        YTZZTY = np.zeros((mats.Y.shape[1], mats.Y.shape[1]))
-        STZZTY = np.zeros((mats.Y.shape[1], mats.Y.shape[1]))
+    if len(free_vars) == 0:
+        YTZZTY = np.zeros((Y.shape[1], Y.shape[1]))
+        STZZTY = np.zeros((Y.shape[1], Y.shape[1]))
     else:
-        YTZZTY = mats.Y.T @ Z @ Z.T @ mats.Y
-        STZZTY = mats.S.T @ Z @ Z.T @ mats.Y
-    if A.shape[0] == 0:
-        STAATS = np.zeros((mats.S.shape[1], mats.S.shape[1]))
-    else:
-        STAATS = mats.S.T @ A @ A.T @ mats.S
+        ZZTY = np.zeros_like(Y)
+        ZZTY[free_vars, :] = Y[free_vars, :]
+        YTZZTY = Y.T @ ZZTY
+        STZZTY = S.T @ ZZTY
 
-    m = mats.L.shape[0]
+    if len(active_vars) == 0:
+        STAATS = np.zeros((S.shape[1], S.shape[1]))
+    else:
+        AATS = np.zeros_like(S)
+        AATS[active_vars, :] = S[active_vars, :]
+        STAATS = S.T @ AATS
+
+    m = L.shape[0]
     K = np.zeros((m * 2, m * 2))
 
-    K[:m, :m] = -mats.D - (1 / mats.theta) * YTZZTY
-    K[:m, m:] = (mats.L - STZZTY).T
-    K[m:, :m] = mats.L - STZZTY
-    K[m:, m:] = mats.theta * STAATS
+    K[:m, :m] = -D - (1.0 / theta) * YTZZTY
+    K[:m, m:] = (L - STZZTY).T
+    K[m:, :m] = L - STZZTY
+    K[m:, m:] = theta * STAATS
 
     return K
 
@@ -289,8 +280,7 @@ def subspace_minimization(
     x: NDArrayFloat,
     xc: NDArrayFloat,
     free_vars: NDArrayInt,
-    Z: spmatrix,
-    A: spmatrix,
+    active_vars: NDArrayInt,
     c: NDArrayFloat,
     grad: NDArrayFloat,
     lb: NDArrayFloat,
@@ -364,19 +354,21 @@ def subspace_minimization(
     # Note that here, Z is suppose to have a shape (t, n) with t the number
     # of free_vars and n the number of variables.
     # WTZ = W.T.dot(Z.todense()) works but this is much less efficient
-    WTZ = Z.T.dot(mats.W).T
+    WTZ = mats.W[free_vars, :].T
 
     r = grad + mats.theta * (xc - x)
     # At iter 0, M is [[0.0]] and so is invMfactors
     if mats.use_factor:
         r -= mats.W.dot(bmv(mats.invMfactors, c))
 
-    rHat = [r[ind] for ind in free_vars]
+    rHat = r[free_vars]
     v = WTZ.dot(rHat)
 
     # Factorization of M^{-1}(I - 1/theta M WT Z @ ZT @ W))
     if mats.use_factor:
-        K = form_k(Z, A, WTZ, mats, is_assert_correct=is_check_factorizations)
+        K = form_k(
+            free_vars, active_vars, WTZ, mats, is_assert_correct=is_check_factorizations
+        )
         # The assertion includes minor overhead
         LK: Optional[NDArrayFloat] = factorize_k(
             K, is_assert_correct=is_check_factorizations
@@ -425,4 +417,5 @@ def subspace_minimization(
         ),
     )
     # Eq (5.2) -> update free variables only
-    return xc + alpha_star * Z @ dHat
+    xc[free_vars] += alpha_star * dHat
+    return xc

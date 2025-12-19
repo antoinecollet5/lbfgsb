@@ -492,15 +492,17 @@ def minimize_lbfgsb(
         )
 
         # Get the free variables for the GCP
-        free_vars, Z, A = get_freev(x_cp, lb, ub, istate.nit, free_vars, iprint, logger)
+        # Note: no numba needed here
+        free_vars, active_vars = get_freev(
+            x_cp, lb, ub, istate.nit, free_vars, iprint, logger
+        )
 
         # subspace minimization: find the search direction for the minimization problem
         xbar: NDArrayFloat = subspace_minimization(
             x,
             x_cp,
             free_vars,
-            Z,
-            A,
+            active_vars,
             c,
             grad,
             lb,
@@ -573,7 +575,12 @@ def minimize_lbfgsb(
                     break  # the while loop
 
                 # We must check if the updated G satisfy the strong wolfe condition
-                X, G = make_X_and_G_respect_strong_wolfe(X, G, eps_SY, logger=logger)
+                X, G = make_X_and_G_respect_strong_wolfe(
+                    X,
+                    G,
+                    eps_SY,
+                    logger=logger,
+                )
 
             mats = update_lbfgs_matrices(
                 x.copy(),  # copy otherwise x might be changed in X when updated
