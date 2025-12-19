@@ -78,7 +78,11 @@ def test_update_X_and_G(
     maxcor: int,
     expected: bool,
 ) -> None:
-    assert update_X_and_G(xk, gk, X, G, maxcor) is expected
+    for is_use_numba_jit in [False, True]:
+        assert (
+            update_X_and_G(xk, gk, X, G, maxcor, is_use_numba_jit=is_use_numba_jit)
+            is expected
+        )
 
 
 @pytest.mark.parametrize(

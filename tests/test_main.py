@@ -65,7 +65,7 @@ def update_fun_def_does_nothing(
     return f0, f0_old, grad, G
 
 
-@pytest.mark.parametrize("is_use_numba_jit", ((True,), (False,)))
+@pytest.mark.parametrize("is_use_numba_jit", (True, False))
 def test_minimize_quad(is_use_numba_jit: bool) -> None:
     # 1) parameters definition
     ftol = 1e-5
@@ -124,7 +124,7 @@ def grad_rosenbrock(x) -> NDArrayFloat:
     return g
 
 
-@pytest.mark.parametrize("is_use_numba_jit", ((True,), (False,)))
+@pytest.mark.parametrize("is_use_numba_jit", (True, False))
 def test_minimize_rozenbrock(is_use_numba_jit: bool) -> None:
     # 1) parameters definition
     ftol = 1e-5
@@ -196,7 +196,8 @@ def grad_beale(x):
     )
 
 
-def test_minimize_beale() -> None:
+@pytest.mark.parametrize("is_use_numba_jit", (True, False))
+def test_minimize_beale(is_use_numba_jit: bool) -> None:
     # 1) parameters definition
     ftol = 1e-14
     gtol = 1e-10
@@ -207,7 +208,13 @@ def test_minimize_beale() -> None:
 
     # 2) optimizaiton with our implementation
     opt_res = minimize_lbfgsb(
-        x0=x0, fun=beale, jac=grad_beale, bounds=bounds, ftol=ftol, gtol=gtol
+        x0=x0,
+        fun=beale,
+        jac=grad_beale,
+        bounds=bounds,
+        ftol=ftol,
+        gtol=gtol,
+        is_use_numba_jit=is_use_numba_jit,
     )
 
     # 3) Check the results correctness
@@ -227,11 +234,17 @@ def test_minimize_beale() -> None:
     )
 
 
-def test_early_stop() -> None:
+@pytest.mark.parametrize("is_use_numba_jit", (True, False))
+def test_early_stop(is_use_numba_jit: bool) -> None:
     """Early stop because of target stop criterion."""
     x0 = np.array([2.5, -1.3])
     res = minimize_lbfgsb(
-        x0=x0, fun=quad, jac=grad_quad, ftarget=1000, is_check_factorizations=True
+        x0=x0,
+        fun=quad,
+        jac=grad_quad,
+        ftarget=1000,
+        is_check_factorizations=True,
+        is_use_numba_jit=is_use_numba_jit,
     )
 
     assert res.nfev == 1
@@ -243,14 +256,16 @@ def test_early_stop() -> None:
 
 
 @pytest.mark.parametrize(
-    "x0, expected_msg, is_success",
+    "x0, expected_msg, is_success, is_use_numba_jit",
     (
-        (np.array([-50]), "ABNORMAL_TERMINATION_IN_LNSRCH", False),
-        (np.array([2.5]), "CONVERGENCE: REL_REDUCTION_OF_F_<=_FTOL", True),
+        (np.array([-50]), "ABNORMAL_TERMINATION_IN_LNSRCH", False, True),
+        (np.array([2.5]), "CONVERGENCE: REL_REDUCTION_OF_F_<=_FTOL", True, False),
+        (np.array([-50]), "ABNORMAL_TERMINATION_IN_LNSRCH", False, True),
+        (np.array([2.5]), "CONVERGENCE: REL_REDUCTION_OF_F_<=_FTOL", True, False),
     ),
 )
 def test_abnormal_termination_linesearch(
-    x0: NDArrayFloat, expected_msg: str, is_success
+    x0: NDArrayFloat, expected_msg: str, is_success, is_use_numba_jit
 ) -> None:
     """Abnormal termination."""
 
@@ -264,13 +279,19 @@ def test_abnormal_termination_linesearch(
         return 1.0 - 10 * np.exp(-10 * x)
 
     res = minimize_lbfgsb(
-        x0=x0, fun=func, jac=jac, maxls=5, is_check_factorizations=True
+        x0=x0,
+        fun=func,
+        jac=jac,
+        maxls=5,
+        is_check_factorizations=True,
+        is_use_numba_jit=is_use_numba_jit,
     )
     assert res.message == expected_msg
     assert res.success is is_success
 
 
-def test_checkpointing() -> None:
+@pytest.mark.parametrize("is_use_numba_jit", (True, False))
+def test_checkpointing(is_use_numba_jit: bool) -> None:
     # 1) parameters definition
     ftol = 1e-10
     gtol = 1e-10
@@ -297,6 +318,7 @@ def test_checkpointing() -> None:
         logger=logger,
         iprint=1000,
         is_check_factorizations=True,
+        is_use_numba_jit=is_use_numba_jit,
     )
 
     # test an empty checkpoint
@@ -332,6 +354,7 @@ def test_checkpointing() -> None:
         iprint=1000,
         is_check_factorizations=True,
         checkpoint=empty_checkpoint,
+        is_use_numba_jit=is_use_numba_jit,
     )
 
     # Non correct checkpoint
@@ -360,6 +383,7 @@ def test_checkpointing() -> None:
             iprint=1000,
             is_check_factorizations=True,
             checkpoint=wrong_ckp,
+            is_use_numba_jit=is_use_numba_jit,
         )
 
     # optimization with max 10 nfev
@@ -376,6 +400,7 @@ def test_checkpointing() -> None:
         logger=logger,
         iprint=1000,
         is_check_factorizations=True,
+        is_use_numba_jit=is_use_numba_jit,
     )
 
     assert opt_rosenbrock2.nfev == 8
@@ -421,6 +446,7 @@ def test_checkpointing() -> None:
         logger=logger,
         iprint=1000,
         checkpoint=opt_rosenbrock2,
+        is_use_numba_jit=is_use_numba_jit,
     )
 
     assert opt_rosenbrock3.nfev == 20
@@ -450,6 +476,7 @@ def test_checkpointing() -> None:
         logger=logger,
         iprint=1000,
         checkpoint=opt_rosenbrock3,
+        is_use_numba_jit=is_use_numba_jit,
     )
 
     assert opt_rosenbrock4.nfev == 20
@@ -474,6 +501,7 @@ def test_checkpointing() -> None:
         logger=logger,
         iprint=1000,
         checkpoint=opt_rosenbrock4,
+        is_use_numba_jit=is_use_numba_jit,
     )
 
     assert opt_rosenbrock5.nfev == 20
@@ -482,7 +510,8 @@ def test_checkpointing() -> None:
     assert opt_rosenbrock5.hess_inv.yk.shape[0] == 3
 
 
-def test_user_callback() -> None:
+@pytest.mark.parametrize("is_use_numba_jit", (True, False))
+def test_user_callback(is_use_numba_jit: bool) -> None:
     # 1) parameters definition
     ftol = 1e-10
     gtol = 1e-10
@@ -515,6 +544,7 @@ def test_user_callback() -> None:
         iprint=1000,
         is_check_factorizations=True,
         callback=_callback,
+        is_use_numba_jit=is_use_numba_jit,
     )
 
     assert res.nfev == 7
