@@ -9,7 +9,7 @@ LBFGSB
 This code is a python port of the famous implementation of Limited-memory
 Broyden-Fletcher-Goldfarb-Shanno (L-BFGS), algorithm 778 written in Fortran [2,3]
 (last update in 2011).
-Note that this is not a wrapper like `minimize`` in scipy but a complete
+Note that this is not a wrapper like `minimize`` in `Scipy <https://docs.scipy.org/doc/scipy/reference/optimize.minimize-lbfgsb.html>`_ but a complete
 reimplementation (pure python).
 The original Fortran code can be found here: https://dl.acm.org/doi/10.1145/279232.279236
 
@@ -19,7 +19,7 @@ The original Fortran code can be found here: https://dl.acm.org/doi/10.1145/2792
 Although there are many implementations or ports (wrappings) of the lbfgsb code,
 as evidenced by the list compiled by `Jonathan Schilling <https://github.com/jonathanschilling/L-BFGS-B>`_,
 in the vast majority, these are merely interfaces (wrapper) to access highly optimized
-Fortran or C code. In Python, for example, this is the case for `scipy <https://docs.scipy.org/doc/scipy/reference/optimize.minimize-lbfgsb.html>`_.
+Fortran or C code. In Python, for example, this is the case for `Scipy <https://docs.scipy.org/doc/scipy/reference/optimize.minimize-lbfgsb.html>`_.
 These codes mainly date back to the 90s and are difficult to understand, and therefore difficult to maintain or modify.
 Incidentally, the only other python implementation we know of to date,
 by `Avieira <https://github.com/avieira/python_lbfgsb>`_, is not very optimized and under GPL3 license,
@@ -27,15 +27,15 @@ which makes it tricky to use.
 
 In this context, the objectives of this code are as follows:
 
-- learn the underlying mechanisms of lbfgsb code;
-- provide understandable, modern code using the high-level language python, while using typing, explicit function names and standardized formatting thanks to `Ruff <https://docs.astral.sh/ruff/>`_;
-- provide detailed and explicit documentation;
-- offer totally free code, including for commercial use, thanks to the BSD-3-Clause license;
-- garantee efficient code, with the number of calls to the objective function and gradient at least as low as in the reference implementation, and without drastically increasing memory consumption or computation time, thanks to the use of numpy and vectorization;
-- add relevant stopping criteria;
-- add the possibility to restart the solver from a checkpoint;
-- add the possibility of modifying on-the-fly the gradient sequences stored in memory, an essential mechanism for the automatic and adaptive weighting of a possible regularization term, See (TODO). This is one of the initial motivation;
-- use a logging system rather than prints, for better integration within complex apps.
+- Learn the underlying mechanisms of lbfgsb code;
+- Provide understandable, modern code using the high-level language python, while using typing, explicit function names and standardized formatting thanks to `Ruff <https://docs.astral.sh/ruff/>`_;
+- Provide detailed and explicit documentation;
+- Offer totally free code, including for commercial use, thanks to the **BSD 3-Clause License**;
+- Garantee efficient code, with the number of calls to the objective function and gradient at least as low as in the reference implementation, and without drastically increasing memory consumption or computation time, thanks to the use of numpy and vectorization;
+- Add relevant stopping criteria;
+- Add the possibility to restart the solver from a checkpoint;
+- Add the possibility of modifying on-the-fly the gradient sequences stored in memory, an essential mechanism for the automatic and adaptive weighting of a possible regularization term, See (TODO). This is one of the initial motivation;
+- Use a logging system rather than `prints`, for better integration within complex apps.
 
 📚 References
 --------------
@@ -65,6 +65,7 @@ Given an optimization problem defined by an objective function and a feasible sp
    import numpy as np
    from lbfgsb.types import NDArrayFloat  # for type hints, numpy array of floats
 
+
     def rosenbrock(x: NDArrayFloat) -> float:
         """
         The Rosenbrock function.
@@ -72,17 +73,19 @@ Given an optimization problem defined by an objective function and a feasible sp
         Parameters
         ----------
         x : array_like
-            1-D array of points at which the Rosenbrock function is to be computed.
+        Array of of points at which the Rosenbrock function is to be computed.
+        It can be of shape (m,) or (m, n), m being the number of variables per vector
+        of parameters and n the number of different vectors.
 
         Returns
         -------
         float
-            The value of the Rosenbrock function.
+            The gradient of the Rosenbrock function with size (n,).
 
         """
         x = np.asarray(x)
-        sum1 = ((x[1:] - x[:-1] ** 2.0) ** 2.0).sum()
-        sum2 = np.square(1.0 - x[:-1]).sum()
+        sum1 = ((x[1:] - x[:-1] ** 2.0) ** 2.0).sum(axis=0)
+        sum2 = np.square(1.0 - x[:-1]).sum(axis=0)
         return 100.0 * sum1 + sum2
 
 
@@ -93,15 +96,17 @@ Given an optimization problem defined by an objective function and a feasible sp
         Parameters
         ----------
         x : array_like
-            1-D array of points at which the Rosenbrock function is to be derivated.
+        Array of of points at which the Rosenbrock function is to be computed.
+        It can be of shape (m,) or (m, n), m being the number of variables per vector
+        of parameters and n the number of different vectors.
 
         Returns
         -------
         NDArrayFloat
-            The gradient of the Rosenbrock function.
+            The gradient(s) of the Rosenbrock function with the same shapes as the input x.
         """
         x = np.asarray(x)
-        g = np.zeros(x.size)
+        g = np.zeros(x.shape)
         # derivation of sum1
         g[1:] += 100.0 * (2.0 * x[1:] - 2.0 * x[:-1] ** 2.0)
         g[:-1] += 100.0 * (-4.0 * x[1:] * x[:-1] + 4.0 * x[:-1] ** 3.0)
@@ -124,7 +129,7 @@ The optimal solution can be found following:
      x0=x0, fun=rosenbrock, jac=rosenbrock_grad, bounds=bounds, ftol=1e-5, gtol=1e-5
    )
 
-``minimize_lbfgsb`` returns an `OptimalResult` instance (from scipy) that contains the results of the optimization:
+``minimize_lbfgsb`` returns an `OptimalResult` instance (from `Scipy <https://docs.scipy.org/doc/scipy/reference/optimize.minimize-lbfgsb.html>`_) that contains the results of the optimization:
 
 .. code-block::
 
@@ -158,7 +163,8 @@ its gradient rather than by the optimization routine itself.
 To mitigate the overhead of Python in performance-critical sections, we provide a
 Numba JIT-compiled implementation of the most expensive components of the algorithm.
 This approach significantly reduces Python overhead and brings performance close to
-that of SciPy for large-scale problems (2 fold speed up for 1M parameters), while still preserving the additional flexibility and features offered
+that of `Scipy <https://docs.scipy.org/doc/scipy/reference/optimize.minimize-lbfgsb.html>`_ 
+for large-scale problems (2 fold speed up for 1M parameters), while still preserving the additional flexibility and features offered
 by our implementation. The only overhead introduced is a one-time LLVM compilation
 during the first call; subsequent calls benefit from Numba’s caching mechanism.
 
@@ -206,8 +212,8 @@ If numba is not found in your environement, a RunTime warning will be raised.
 
 Here are some of the unique features that this implementation provides (to the best of our knowledge in 2025).
 
-Checkpointing
--------------
+✨ Checkpointing
+-----------------
 
 In quasi-Newtons (L-BFGS-B is one of them), the inverse of the Hessian is approximated from the
 series of the (`m` last) past gradients. If the optimization is stopped, the history is lost and restarting
@@ -388,7 +394,7 @@ This project is released under the **BSD 3-Clause License**.
 
 Copyright (c) 2025, Antoine COLLET. All rights reserved.
 
-For more details, see the :file:`LICENSE` file included in this repository.
+For more details, see the `LICENSE <https://github.com/antoinecollet5/lbfgsb/blob/master/LICENSE>`_ file included in this repository.
 
 ==============
 ⚠️ Disclaimer
@@ -413,7 +419,7 @@ For questions, suggestions, or contributions, you can reach out via:
 - Email: antoinecollet5@gmail.com
 - GitHub: https://github.com/antoinecollet5/lbfgsb
 
-We welcome contributions! Please see the :ref:`contributing` section for guidelines.
+We welcome contributions!
 
 
 .. |License| image:: https://img.shields.io/badge/License-BSD_3--Clause-blue.svg
