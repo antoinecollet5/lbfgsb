@@ -24,7 +24,7 @@ jobs:
           python-version: 3.13
 
       - name: Install dependencies
-        run: pip install -r requirements_dev.txt
+        run: pip install -e ".[lint]"
 
       - name: Run pre-commit
         run: |
@@ -52,11 +52,8 @@ jobs:
         with:
           python-version: 3.13
 
-      - name: Install dependencies
-        run: pip install -r requirements_dev.txt
-
       - name: Install project
-        run: pip install -e .
+        run: pip install -e ".[all]"
 
       - name: Set up xvfb
         run: |
