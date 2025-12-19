@@ -131,12 +131,12 @@ The optimal solution can be found following:
     message: CONVERGENCE: REL_REDUCTION_OF_F_<=_FTOL
     success: True
     status: 0
-        fun: 5.834035724922196e-07
-            x: [ 9.994e-01  9.989e-01]
-        nit: 16
-        jac: [-2.171e-02  1.030e-02]
-        nfev: 19
-        njev: 19
+    fun: 5.834035724922196e-07
+    x: [ 9.994e-01  9.989e-01]
+    nit: 16
+    jac: [-2.171e-02  1.030e-02]
+    nfev: 19
+    njev: 19
     hess_inv: <2x2 LbfgsInvHessProduct with dtype=float64>
 
 See all use cases in the tutorials section of the `documentation <https://lbfgsb.readthedocs.io/en/latest/usage.html>`_.
@@ -224,12 +224,12 @@ It yields
     message: STOP: TOTAL NO. of f AND g EVALUATIONS EXCEEDS LIMIT
     success: True
     status: 1
-        fun: 0.8619211711864526
-            x: [ 6.370e-01  4.913e-01]
-        nit: 1
-        jac: [-2.250e+01  1.709e+01]
-        nfev: 3
-        njev: 3
+    fun: 0.8619211711864526
+    x: [ 6.370e-01  4.913e-01]
+    nit: 1
+    jac: [-2.250e+01  1.709e+01]
+    nfev: 3
+    njev: 3
     hess_inv: <2x2 LbfgsInvHessProduct with dtype=float64>
 
 Resuming the minimization from the previous parameters state (`x0=res_3_fun.x`):
@@ -248,12 +248,12 @@ gives
     message: CONVERGENCE: REL_REDUCTION_OF_F_<=_FTOL
     success: True
     status: 0
-        fun: 1.349454245280619e-10
-            x: [ 1.000e+00  1.000e+00]
-        nit: 14
-        jac: [ 1.030e-04 -6.267e-05]
-        nfev: 21
-        njev: 21
+    fun: 1.349454245280619e-10
+    x: [ 1.000e+00  1.000e+00]
+    nit: 14
+    jac: [ 1.030e-04 -6.267e-05]
+    nfev: 21
+    njev: 21
     hess_inv: <2x2 LbfgsInvHessProduct with dtype=float64>
 
 One can see that the total number of calls to the objective function and to its gradient is higher (`3+21 = 24` vs `19` originally).
@@ -265,7 +265,13 @@ With the checkpointing, it is possible to restore the last state in a straighfor
 .. code-block:: python
 
     res_checkpoint = minimize_lbfgsb(
-        x0=res_3_fun.x, fun=rosenbrock, jac=rosenbrock_grad, bounds=bounds, ftol=1e-5, gtol=1e-5, checkpoint=res_3_fun
+        x0=res_3_fun.x,
+        fun=rosenbrock,
+        jac=rosenbrock_grad,
+        bounds=bounds,
+        ftol=1e-5,
+        gtol=1e-5,
+        checkpoint=res_3_fun
     )
     print(res_checkpoint)
 
@@ -277,12 +283,12 @@ yields
     message: CONVERGENCE: REL_REDUCTION_OF_F_<=_FTOL
     success: True
     status: 0
-        fun: 5.834035724922196e-07
-            x: [ 9.994e-01  9.989e-01]
-        nit: 16
-        jac: [-2.171e-02  1.030e-02]
-        nfev: 19
-        njev: 19
+    fun: 5.834035724922196e-07
+    x: [ 9.994e-01  9.989e-01]
+    nit: 16
+    jac: [-2.171e-02  1.030e-02]
+    nfev: 19
+    njev: 19
     hess_inv: <2x2 LbfgsInvHessProduct with dtype=float64>
 
 Note that this time, we keep track of `nfev` and `njev`. In addition, the results is strictly the same as minimizing the function in
@@ -328,12 +334,12 @@ yields
     message: STOP: USER CALLBACK
     success: True
     status: 2
-        fun: 0.08537354414890966
-            x: [ 7.354e-01  5.284e-01]
-        nit: 8
-        jac: [ 3.115e+00 -2.478e+00]
-        nfev: 10
-        njev: 10
+    fun: 0.08537354414890966
+    x: [ 7.354e-01  5.284e-01]
+    nit: 8
+    jac: [ 3.115e+00 -2.478e+00]
+    nfev: 10
+    njev: 10
     hess_inv: <2x2 LbfgsInvHessProduct with dtype=float64>
 
 Cost function update

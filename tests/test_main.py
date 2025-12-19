@@ -120,6 +120,7 @@ def grad_rosenbrock(x) -> NDArrayFloat:
     g[1] = 200 * (-(x[0] ** 2) + x[1])
     return g
 
+
 @pytest.mark.parametrize("is_use_numba_jit", ((True,), (False,)))
 def test_minimize_rozenbrock(is_use_numba_jit: bool) -> None:
     # 1) parameters definition
@@ -142,7 +143,7 @@ def test_minimize_rozenbrock(is_use_numba_jit: bool) -> None:
         logger=logger,
         iprint=1000,
         is_check_factorizations=True,
-        is_use_numba_jit=is_use_numba_jit
+        is_use_numba_jit=is_use_numba_jit,
     )
     x_opt = np.array([1, 1])
     np.testing.assert_allclose(x_opt, opt_rosenbrock.x, rtol=1e-3)
