@@ -1,8 +1,13 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright (c) 2025 Antoine COLLET
 
+from typing import Callable, Literal, Optional, Tuple, Union
+
 import numpy as np
+from numpy.typing import ArrayLike
 from scipy.optimize._numdiff import approx_derivative
+
+from lbfgsb.types import NDArrayFloat
 
 FD_METHODS = ("2-point", "3-point", "cs")
 
@@ -15,27 +20,22 @@ class ScalarFunction:
 
     Parameters
     ----------
-    fun : callable
-        evaluates the scalar function. Must be of the form ``fun(x, *args)``,
-        where ``x`` is the argument in the form of a 1-D array and ``args`` is
-        a tuple of any additional fixed parameters needed to completely specify
-        the function. Should return a scalar.
+    fun : Callable[[NDArrayFloat], float]
+        evaluates the scalar function. Must be of the form ``fun(x)``,
+        where ``x`` is the argument in the form of a 1-D array. Should return a scalar.
     x0 : array-like
         Provides an initial set of variables for evaluating fun. Array of real
         elements of size (n,), where 'n' is the number of independent
         variables.
-    args : tuple, optional
-        Any additional fixed parameters needed to completely specify the scalar
-        function.
-    grad : {callable, '2-point', '3-point', 'cs'}
+    grad : Union[Callable[[NDArrayFloat], NDArrayFloat], Literal['2-point',
+    '3-point', 'cs']]
         Method for computing the gradient vector.
         If it is a callable, it should be a function that returns the gradient
         vector:
 
-            ``grad(x, *args) -> array_like, shape (n,)``
+            ``grad(x) -> array_like, shape (n,)``
 
-        where ``x`` is an array with shape (n,) and ``args`` is a tuple with
-        the fixed parameters.
+        where ``x`` is an array with shape (n,).
         Alternatively, the keywords  {'2-point', '3-point', 'cs'} can be used
         to select a finite difference scheme for numerical estimation of the
         gradient with a relative step size. These finite difference schemes
@@ -71,29 +71,34 @@ class ScalarFunction:
 
     def __init__(
         self,
-        fun,
-        x0,
-        args,
-        grad,
-        finite_diff_rel_step,
-        finite_diff_bounds,
-        epsilon=None,
-    ):
+        fun: Callable[[NDArrayFloat], float],
+        x0: NDArrayFloat,
+        grad: Union[
+            Callable[[NDArrayFloat], NDArrayFloat],
+            Literal["2-point", "3-point", "cs"],
+        ],
+        finite_diff_rel_step: Optional[ArrayLike],
+        finite_diff_bounds: Union[Tuple, NDArrayFloat],
+        epsilon: Optional[ArrayLike] = None,
+    ) -> None:
         if not callable(grad) and grad not in FD_METHODS:
             raise ValueError(f"`grad` must be either callable or one of {FD_METHODS}.")
 
         # the astype call ensures that self.x is a copy of x0
-        self.x = np.atleast_1d(x0).astype(float)
-        self.n = self.x.size
-        self.nfev = 0
-        self.ngev = 0
-        self.nhev = 0
-        self.f_updated = False
-        self.g_updated = False
-        self.H_updated = False
+        self.x: NDArrayFloat = np.atleast_1d(x0).astype(float)
+        self.n: int = self.x.size
+        self.nfev: int = 0
+        self.ngev: int = 0
+        self.nhev: int = 0
+        self.f_updated: bool = False
+        self.g_updated: bool = False
+        self.H_updated: bool = False
 
-        self._lowest_x = None
-        self._lowest_f = np.inf
+        self.f: float = np.inf
+        self.g: NDArrayFloat = np.zeros(self.n, dtype=np.float64)
+
+        self._lowest_x: NDArrayFloat = self.x
+        self._lowest_f: float = np.inf
 
         finite_diff_options = {}
         if grad in FD_METHODS:
@@ -103,16 +108,16 @@ class ScalarFunction:
             finite_diff_options["bounds"] = finite_diff_bounds
 
         # Function evaluation
-        def fun_wrapped(x):
+        def fun_wrapped(x) -> float:
             self.nfev += 1
             # Send a copy because the user may overwrite it.
             # Overwriting results in undefined behaviour because
             # fun(self.x) will change self.x, with the two no longer linked.
-            fx = fun(np.copy(x), *args)
+            fx: float = fun(np.copy(x))
             # Make sure the function returns a true scalar
             if not np.isscalar(fx):
                 try:
-                    fx = np.asarray(fx).item()
+                    fx = np.asarray(fx, dtype=np.float64).item()
                 except (TypeError, ValueError) as e:
                     raise ValueError(
                         "The user-provided objective function "
@@ -125,7 +130,7 @@ class ScalarFunction:
 
             return fx
 
-        def update_fun():
+        def update_fun() -> None:
             self.f = fun_wrapped(self.x)
 
         self._update_fun_impl = update_fun
@@ -135,17 +140,17 @@ class ScalarFunction:
 
             def grad_wrapped(x):
                 self.ngev += 1
-                return np.atleast_1d(grad(np.copy(x), *args))
+                return np.atleast_1d(grad(np.copy(x)))
 
             def update_grad():
-                self.g = grad_wrapped(self.x)
+                self.g[:] = grad_wrapped(self.x)
 
         elif grad in FD_METHODS:
 
-            def update_grad():
+            def update_grad() -> None:
                 self._update_fun()
                 self.ngev += 1
-                self.g = approx_derivative(
+                self.g[:] = approx_derivative(
                     fun_wrapped, self.x, f0=self.f, **finite_diff_options
                 )
 
@@ -190,10 +195,19 @@ class ScalarFunction:
 
 
 def prepare_scalar_function(
-    fun,
-    x0,
-    jac=None,
-    args=(),
+    fun: Callable[[NDArrayFloat], float],
+    x0: NDArrayFloat,
+    jac: Optional[
+        Union[
+            Callable[
+                [
+                    NDArrayFloat,
+                ],
+                NDArrayFloat,
+            ],
+            Literal["2-point", "3-point", "cs"],
+        ]
+    ] = None,
     bounds=None,
     epsilon=None,
     finite_diff_rel_step=None,
@@ -207,11 +221,9 @@ def prepare_scalar_function(
     fun : callable
         The objective function to be minimized.
 
-            ``fun(x, *args) -> float``
+            ``fun(x) -> float``
 
-        where ``x`` is an 1-D array with shape (n,) and ``args``
-        is a tuple of the fixed parameters needed to completely
-        specify the function.
+        where ``x`` is an 1-D array with shape (n,).
     x0 : ndarray, shape (n,)
         Initial guess. Array of real elements of size (n,),
         where 'n' is the number of independent variables.
@@ -219,14 +231,14 @@ def prepare_scalar_function(
         Method for computing the gradient vector. If it is a callable, it
         should be a function that returns the gradient vector:
 
-            ``jac(x, *args) -> array_like, shape (n,)``
+            ``jac(x) -> array_like, shape (n,)``
 
         If one of `{'2-point', '3-point', 'cs'}` is selected then the gradient
         is calculated with a relative step for finite differences. If `None`,
         then two-point finite differences with an absolute step is used.
-    args : tuple, optional
-        Extra arguments passed to the objective function and its
-        derivatives (`fun`, `jac` functions).
+        If None or False, the gradient will be estimated
+        using 2-point finite difference estimation with an absolute step size.
+        The default is None.
     bounds : sequence, optional
         Bounds on variables. 'new-style' bounds are required.
     eps : float or ndarray
@@ -268,8 +280,6 @@ def prepare_scalar_function(
 
     # ScalarFunction caches. Reuse of fun(x) during grad
     # calculation reduces overall function evaluations.
-    sf = ScalarFunction(
-        fun, x0, args, grad, finite_diff_rel_step, bounds, epsilon=epsilon
-    )
+    sf = ScalarFunction(fun, x0, grad, finite_diff_rel_step, bounds, epsilon=epsilon)
 
     return sf

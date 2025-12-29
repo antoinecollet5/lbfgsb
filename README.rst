@@ -2,7 +2,7 @@
 LBFGSB
 ======
 
-|License| |Stars| |Python| |PyPI| |Downloads| |Build Status| |Documentation Status| |Coverage| |Codacy| |Precommit: enabled| |Ruff| |Mypy| |DOI|
+|License| |Stars| |Python| |PyPI| |Downloads| |Build Status| |Documentation Status| |Coverage| |Codacy| |Precommit: enabled| |Ruff| |ty| |DOI|
 
 🐍 A python impementation of the famous L-BFGS-B quasi-Newton solver [1].
 
@@ -28,7 +28,7 @@ which makes it tricky to use.
 In this context, the objectives of this code are as follows:
 
 - Learn the underlying mechanisms of lbfgsb code;
-- Provide understandable, modern code using the high-level language python, while using typing, explicit function names and standardized formatting thanks to `Ruff <https://docs.astral.sh/ruff/>`_;
+- Provide understandable, modern code using the high-level language python, while using typing, explicit function names and standardized formatting thanks to `Ruff <https://docs.astral.sh/ruff/>`_ and `ty <https://docs.astral.sh/ty/>`_;
 - Provide detailed and explicit documentation;
 - Offer totally free code, including for commercial use, thanks to the **BSD 3-Clause License**;
 - Garantee efficient code, with the number of calls to the objective function and gradient at least as low as in the reference implementation, and without drastically increasing memory consumption or computation time, thanks to the use of numpy and vectorization;
@@ -144,6 +144,26 @@ The optimal solution can be found following:
     njev: 19
     hess_inv: <2x2 LbfgsInvHessProduct with dtype=float64>
 
+Note that unlike `minimize` from scipy, `minimize_lbfgsb` does not accept `args` nor `kwargs`. Hence you will have to define
+wrappers if needed.
+
+.. code-block:: python
+
+    # This cannot be passed to minimize_lbfgsb
+    def my_cost_function(x: NDArrayFloat, arg1: int, arg2: float, *, kwargs1: int=0, kwargs2: str="blabla") -> float:
+        """
+        Return a float and takes args and kwargs.
+        """
+        ... # just do something and return a float
+
+    # This can be passed to minimize_lbfgsb
+    def my_wrapper(x: NDArrayFloat) -> float:
+        """
+        Return a float and takes args and kwargs.
+        """
+        retur my_cost_function(x, 10, 239.9, kwargs1=1, kwargs2="blabla2")
+
+
 See all use cases in the tutorials section of the `documentation <https://lbfgsb.readthedocs.io/en/latest/usage.html>`_.
 
 ===============
@@ -163,7 +183,7 @@ its gradient rather than by the optimization routine itself.
 To mitigate the overhead of Python in performance-critical sections, we provide a
 Numba JIT-compiled implementation of the most expensive components of the algorithm.
 This approach significantly reduces Python overhead and brings performance close to
-that of `Scipy <https://docs.scipy.org/doc/scipy/reference/optimize.minimize-lbfgsb.html>`_ 
+that of `Scipy <https://docs.scipy.org/doc/scipy/reference/optimize.minimize-lbfgsb.html>`_
 for large-scale problems (2 fold speed up for 1M parameters), while still preserving the additional flexibility and features offered
 by our implementation. The only overhead introduced is a one-time LLVM compilation
 during the first call; subsequent calls benefit from Numba’s caching mechanism.
@@ -175,12 +195,12 @@ a warning is issued and the code automatically falls back to the non-JIT impleme
 .. code-block:: python
 
    res = minimize_lbfgsb(
-     x0=x0, 
-     fun=rosenbrock, 
-     jac=rosenbrock_grad, 
-     bounds=bounds, 
-     ftol=1e-5, 
-     gtol=1e-5, 
+     x0=x0,
+     fun=rosenbrock,
+     jac=rosenbrock_grad,
+     bounds=bounds,
+     ftol=1e-5,
+     gtol=1e-5,
      is_use_numba_jit=False
    )
 
@@ -225,12 +245,12 @@ Let's take the previous example with the rosenbrock objective function. But this
 .. code-block:: python
 
     res_3_fun = minimize_lbfgsb(
-        x0=x0, 
-        fun=rosenbrock, 
+        x0=x0,
+        fun=rosenbrock,
         jac=rosenbrock_grad,
-        bounds=bounds, 
-        ftol=1e-5, 
-        gtol=1e-5, 
+        bounds=bounds,
+        ftol=1e-5,
+        gtol=1e-5,
         maxfun=3
     )
     print(res_3_fun)
@@ -255,11 +275,11 @@ Resuming the minimization from the previous parameters state (`x0=res_3_fun.x`):
 .. code-block:: python
 
     res_final = minimize_lbfgsb(
-        x0=res_3_fun.x, 
-        fun=rosenbrock, 
-        jac=rosenbrock_grad, 
-        bounds=bounds, 
-        ftol=1e-5, 
+        x0=res_3_fun.x,
+        fun=rosenbrock,
+        jac=rosenbrock_grad,
+        bounds=bounds,
+        ftol=1e-5,
         gtol=1e-5
     )
     print(res_final)
@@ -346,12 +366,12 @@ For example, one can redefine the criterion based on the number of objective fun
 
 
     res_callback = minimize_lbfgsb(
-        x0=x0, 
-        fun=rosenbrock, 
-        jac=rosenbrock_grad, 
-        bounds=bounds, 
-        ftol=1e-5, 
-        gtol=1e-5, 
+        x0=x0,
+        fun=rosenbrock,
+        jac=rosenbrock_grad,
+        bounds=bounds,
+        ftol=1e-5,
+        gtol=1e-5,
         callback=my_custom_callback
     )
     print(res_callback)
@@ -400,14 +420,14 @@ For more details, see the `LICENSE <https://github.com/antoinecollet5/lbfgsb/blo
 ⚠️ Disclaimer
 ==============
 
-This software is provided "as is", without warranty of any kind, express or implied, 
-including but not limited to the warranties of merchantability, fitness for a particular purpose, 
-or non-infringement. In no event shall the authors or copyright holders be liable for 
-any claim, damages, or other liability, whether in an action of contract, tort, 
-or otherwise, arising from, out of, or in connection with the software or the use 
+This software is provided "as is", without warranty of any kind, express or implied,
+including but not limited to the warranties of merchantability, fitness for a particular purpose,
+or non-infringement. In no event shall the authors or copyright holders be liable for
+any claim, damages, or other liability, whether in an action of contract, tort,
+or otherwise, arising from, out of, or in connection with the software or the use
 or other dealings in the software.
 
-By using this software, you agree to accept full responsibility for any consequences, 
+By using this software, you agree to accept full responsibility for any consequences,
 and you waive any claims against the authors or contributors.
 
 =======
@@ -468,9 +488,9 @@ We welcome contributions!
     :target: https://github.com/astral-sh/ruff
     :alt: Ruff
 
-.. |Mypy| image:: https://www.mypy-lang.org/static/mypy_badge.svg
-    :target: https://mypy-lang.org/
-    :alt: Checked with mypy
+.. |ty| image:: https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ty/main/assets/badge/v0.json
+    :target: https://github.com/astral-sh/ty
+    :alt: Checked with ty
 
 .. |DOI| image:: https://zenodo.org/badge/DOI/10.5281/zenodo.11384588.svg
    :target: https://doi.org/10.5281/zenodo.11384588

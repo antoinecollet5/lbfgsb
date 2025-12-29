@@ -2,6 +2,7 @@
 # Copyright (c) 2025 Antoine COLLET
 
 import logging
+from collections import deque
 from contextlib import nullcontext as does_not_raise
 from typing import Deque, Tuple
 
@@ -63,8 +64,8 @@ def test_is_update_X_and_G(
         (
             np.array([1.0, 1.0]),
             np.array([0.0, 0.0]),
-            Deque([np.array([1.0, 1.0])]),
-            Deque([np.array([0.0, 0.0])]),
+            deque([np.array([1.0, 1.0])]),
+            deque([np.array([0.0, 0.0])]),
             5,
             False,
         ),
@@ -89,9 +90,9 @@ def test_update_X_and_G(
     "X,G,expected",
     (
         (
-            Deque([np.array([1.0, 1.0]), np.array([1.0, 1.0])]),
-            Deque([np.array([0.0, 0.0]), np.array([0.0, 0.0])]),
-            (Deque([np.array([1.0, 1.0])]), Deque([np.array([0.0, 0.0])])),
+            deque([np.array([1.0, 1.0]), np.array([1.0, 1.0])]),
+            deque([np.array([0.0, 0.0]), np.array([0.0, 0.0])]),
+            (deque([np.array([1.0, 1.0])]), deque([np.array([0.0, 0.0])])),
         ),
     ),
 )

@@ -35,3 +35,8 @@ repos:
     entry: ruff format
     language: python
     types_or: [ python, pyi, jupyter ]
+  - id: ty
+    name: ty check
+    entry: ty check .
+    language: system
+    types: [python]

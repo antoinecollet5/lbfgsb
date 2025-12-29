@@ -39,7 +39,7 @@ from lbfgsb.scalar_function import FD_METHODS, ScalarFunction, prepare_scalar_fu
 )
 def test_ScalarFunction(grad, exception) -> None:
     with exception:
-        ScalarFunction(rosenbrock, np.array([0.0, 5.0]), (), grad, 0.1, 0.1, 0.1)
+        ScalarFunction(rosenbrock, np.array([0.0, 5.0]), grad, 0.1, 0.1, 0.1)
 
 
 @pytest.mark.parametrize(

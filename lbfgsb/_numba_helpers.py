@@ -4,7 +4,7 @@
 """
 Provide njit from numba.
 
-If numba is not avaible provide an effectless decorator instead.
+If numba is not available provide an effectless decorator instead.
 """
 
 from typing import Callable, TypeVar

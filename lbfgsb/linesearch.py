@@ -146,7 +146,7 @@ def line_search(
     max_iter: int = 30,
     iprint: int = 10,
     logger: Optional[logging.Logger] = None,
-    isave: NDArrayFloat = np.zeros((2,), np.intc),
+    isave: np.typing.NDArray[np.intc] = np.zeros((2,), np.intc),
     dsave: NDArrayFloat = np.zeros((13,), np.float64),
     is_use_numba_jit: bool = False,
 ) -> Optional[float]:

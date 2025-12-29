@@ -195,7 +195,6 @@ def standalone_linesearch(
     sf = ScalarFunction(
         fun=fun,
         x0=x0,
-        args=(),
         grad=grad,
         finite_diff_bounds=(lb, ub),
         finite_diff_rel_step=None,

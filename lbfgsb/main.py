@@ -42,7 +42,7 @@ import logging
 import warnings
 from collections import deque
 from dataclasses import dataclass
-from typing import Callable, Deque, Optional, Tuple, Union
+from typing import Callable, Deque, Literal, Optional, Tuple, Union
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -50,7 +50,6 @@ from scipy.optimize import (
     LbfgsInvHessProduct,  # noqa : F401
     OptimizeResult,
 )
-from typing_extensions import Protocol  # support python 3.7
 
 from lbfgsb._numba_helpers import NUMBA_AVAILABLE
 from lbfgsb.base import (
@@ -75,36 +74,33 @@ from lbfgsb.subspacemin import get_freev, subspace_minimization
 from lbfgsb.types import NDArrayFloat
 
 
-class ObjectiveFunction(Protocol):
-    """Protocol for objective function signature."""
-
-    def __call__(self, __x, *args, **kwargs) -> float: ...
-
-
-class GradientFunction(Protocol):
-    """Protocol for gradient signature."""
-
-    def __call__(self, __x, *args, **kwargs) -> NDArrayFloat: ...
-
-
 @dataclass
 class InternalState:
     """Class to keep track of internal state."""
 
     # keep track of some values (best, init)
-    nit = 0
-    status = "IDLE."
-    task_str = "START"
-    is_success = False
-    warnflag = 2
+    nit: int = 0
+    status: str = "IDLE."
+    task_str: str = "START"
+    is_success: bool = False
+    warnflag: int = 2
 
 
 def minimize_lbfgsb(
     *,
     x0: NDArrayFloat,
-    fun: Optional[ObjectiveFunction] = None,
-    args: Tuple = (),
-    jac: Optional[Union[GradientFunction, str, bool]] = None,
+    fun: Callable[[NDArrayFloat], float],
+    jac: Optional[
+        Union[
+            Callable[
+                [
+                    NDArrayFloat,
+                ],
+                NDArrayFloat,
+            ],
+            Literal["2-point", "3-point", "cs"],
+        ]
+    ] = None,
     update_fun_def: Optional[
         Callable[
             [
@@ -144,38 +140,30 @@ def minimize_lbfgsb(
     Solves bound constrained optimization problems by using the compact formula
     of the limited memory BFGS updates.
 
-    fun :  Optional[Callable[[NDArrayFloat, Tuple[Any]], float]],
+    fun :  Callable[[NDArrayFloat], Union[float, Tuple[float, NDArrayFloat]]],
         The objective function to be minimized.
 
-            ``fun(x, *args) -> float``
+            ``fun(x) -> float``
 
-        where ``x`` is a 1-D array with shape (n,) and ``args``
-        is a tuple of the fixed parameters needed to completely
-        specify the function. Mandatory if `fun_and_jax` is not specified. The default
-        is None.
+        where ``x`` is a 1-D array with shape (n,). Note that if additional arguments
+        are needed for the objective function, it is necessary to build a wrapper.
     x0 : ndarray, shape (n,)
         Initial guess. Array of real elements of size (n,),
         where ``n`` is the number of independent variables.
-    args : tuple, optional
-        Extra arguments passed to the objective function and its
-        derivatives (`fun`, `jac` and `hess` functions).
     jac : {callable,  '2-point', '3-point', 'cs', bool}, optional
         Method for computing the gradient vector.
         If it is a callable, it should be a function that returns the gradient
         vector:
 
-            ``jac(x, *args) -> array_like, shape (n,)``
+            ``jac(x) -> array_like, shape (n,)``
 
-        where ``x`` is an array with shape (n,) and ``args`` is a tuple with
-        the fixed parameters. If `jac` is a Boolean and is True, `fun` is
-        assumed to return a tuple ``(f, g)`` containing the objective
-        function and the gradient.
-        If None or False, the gradient will be estimated using 2-point finite
-        difference estimation with an absolute step size.
+        where ``x`` is an array with shape (n,).
         Alternatively, the keywords  {'2-point', '3-point', 'cs'} can be used
         to select a finite difference scheme for numerical estimation of the
         gradient with a relative step size. These finite difference schemes
-        obey any specified `bounds`.
+        obey any specified `bounds`. If None or False, the gradient will be estimated
+        using 2-point finite difference estimation with an absolute step size.
+        The default is None.
     update_fun_def: Optional[Callable]
         Function to update the gradient sequence. This is an experimental feature to
         allow changing the objective function definition on the fly. In the first place
@@ -378,7 +366,6 @@ def minimize_lbfgsb(
         fun,
         x,
         jac=jac,
-        args=args,
         epsilon=eps,
         bounds=(lb, ub),
         finite_diff_rel_step=finite_diff_rel_step,
@@ -557,8 +544,8 @@ def minimize_lbfgsb(
             else:
                 istate.task_str = "RESTART_FROM_LNSRCH"
                 # Keep only the last correction
-                X = Deque([X[-1]])
-                G = Deque([G[-1]])
+                X = deque([X[-1]])
+                G = deque([G[-1]])
                 # Reboot BFGS-Hessian
                 mats = LBFGSB_MATRICES(n)
         else:

@@ -33,6 +33,7 @@ Reference:
 """
 
 import logging
+from collections import deque
 from typing import Deque, Optional, Tuple
 
 import numpy as np
@@ -542,7 +543,7 @@ def make_X_and_G_respect_strong_wolfe(
     """
 
     ncor: int = len(X) - 1
-    _X, _G = Deque([X[-1]]), Deque([G[-1]])
+    _X, _G = deque([X[-1]]), deque([G[-1]])
     for i in range(ncor):
         k = ncor - i - 1  # start at 1
         if not is_update_X_and_G(X[k], G[k], _X[0], _G[0], eps):
