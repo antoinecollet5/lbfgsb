@@ -95,7 +95,7 @@ class ScalarFunction:
         self.H_updated: bool = False
 
         self.f: float = np.inf
-        self.g: NDArrayFloat = np.zeros(self.n, dtype=np.float64)
+        self.g: NDArrayFloat
 
         self._lowest_x: NDArrayFloat = self.x
         self._lowest_f: float = np.inf
@@ -143,14 +143,14 @@ class ScalarFunction:
                 return np.atleast_1d(grad(np.copy(x)))
 
             def update_grad():
-                self.g[:] = grad_wrapped(self.x)
+                self.g = grad_wrapped(self.x)
 
         elif grad in FD_METHODS:
 
             def update_grad() -> None:
                 self._update_fun()
                 self.ngev += 1
-                self.g[:] = approx_derivative(
+                self.g = approx_derivative(
                     fun_wrapped, self.x, f0=self.f, **finite_diff_options
                 )
 
