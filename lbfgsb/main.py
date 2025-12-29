@@ -42,7 +42,7 @@ import logging
 import warnings
 from collections import deque
 from dataclasses import dataclass
-from typing import Callable, Deque, Literal, Optional, Tuple, Union
+from typing import Callable, Deque, Optional, Tuple, Union
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -50,6 +50,7 @@ from scipy.optimize import (
     LbfgsInvHessProduct,  # noqa : F401
     OptimizeResult,
 )
+from typing_extensions import Literal  # for compatibility with python 3.7
 
 from lbfgsb._numba_helpers import NUMBA_AVAILABLE
 from lbfgsb.base import (

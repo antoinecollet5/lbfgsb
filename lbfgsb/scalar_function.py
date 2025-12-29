@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright (c) 2025 Antoine COLLET
 
-from typing import Callable, Literal, Optional, Tuple, Union
+from typing import Callable, Optional, Tuple, Union
 
 import numpy as np
 from numpy.typing import ArrayLike
 from scipy.optimize._numdiff import approx_derivative
+from typing_extensions import Literal  # for compatibility with python 3.7
 
 from lbfgsb.types import NDArrayFloat
 
