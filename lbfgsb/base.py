@@ -155,7 +155,7 @@ def count_var_at_bounds(x: NDArrayFloat, lb: NDArrayFloat, ub: NDArrayFloat) -> 
     int
         Number of variables exactly at the bounds.
     """
-    return np.count_nonzero(np.logical_or(x >= ub, x <= lb)).item()
+    return int(np.count_nonzero(np.logical_or(x >= ub, x <= lb)))
 
 
 def display_start(
