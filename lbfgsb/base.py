@@ -141,10 +141,7 @@ def count_var_at_bounds(x: NDArrayFloat, lb: NDArrayFloat, ub: NDArrayFloat) -> 
     Parameters
     ----------
     x : NDArrayFloat
-        Adjusted variables. May be a 1D vector of size :math:`N_{n}`,
-        or a 2D array of shape (:math:`N_{n}`, :math:`N_{e}`)
-        with :math:`N_{n}` the number of adjusted variables and
-        :math:`N_{e}` the number of columns (members in the ensemble).
+        Adjusted variables as a 1D vector of size :math:`N_{n}`.
     lb : NDArrayFloat
         Lower bounds.
     ub : NDArrayFloat
