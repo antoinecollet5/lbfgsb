@@ -89,7 +89,7 @@ tests = [
     "coverage",
     "numdifftools",
 ]
-lint = ["pre-commit", "codespell>=2.1.0", "ruff", "ty"]
+lint = ["pre-commit", "codespell>=2.1.0", "ruff", "ty ; python_version > '3.7'"]
 install = ["pip", "wheel"]
 
 [tool.ruff]
