@@ -13,8 +13,11 @@ Note that this is not a wrapper like `minimize`` in `Scipy <https://docs.scipy.o
 reimplementation (pure python).
 The original Fortran code can be found here: https://dl.acm.org/doi/10.1145/279232.279236
 
+**The complete and up to date documentation can be found here**: https://lbfgsb.readthedocs.io.
+
+===============
 🎯 Motivations
----------------
+===============
 
 Although there are many implementations or ports (wrappings) of the lbfgsb code,
 as evidenced by the list compiled by `Jonathan Schilling <https://github.com/jonathanschilling/L-BFGS-B>`_,
@@ -37,28 +40,29 @@ In this context, the objectives of this code are as follows:
 - Add the possibility of modifying on-the-fly the gradient sequences stored in memory, an essential mechanism for the automatic and adaptive weighting of a possible regularization term, See (TODO). This is one of the initial motivation;
 - Use a logging system rather than `prints`, for better integration within complex apps.
 
-📚 References
---------------
-[1] R. H. Byrd, P. Lu and J. Nocedal. A Limited Memory Algorithm for Bound
-Constrained Optimization, (1995), SIAM Journal on Scientific and
-Statistical Computing, 16, 5, pp. 1190-1208.
-
-[2] C. Zhu, R. H. Byrd and J. Nocedal. L-BFGS-B: Algorithm 778: L-BFGS-B,
-FORTRAN routines for large scale bound constrained optimization (1997),
-ACM Transactions on Mathematical Software, 23, 4, pp. 550 - 560.
-
-[3] J.L. Morales and J. Nocedal. L-BFGS-B: Remark on Algorithm 778: L-BFGS-B,
-FORTRAN routines for large scale bound constrained optimization (2011),
-ACM Transactions on Mathematical Software, 38, 1.
-
-* Free software: SPDX-License-Identifier: BSD-3-Clause
-* Documentation: https://lbfgsb.readthedocs.io.
-
 ===============
 🚀 Quick start
 ===============
 
-Given an optimization problem defined by an objective function and a feasible space:
+To install `lbfgsb`, the easiest way is through `pip`:
+
+.. code-block::
+
+    pip install lbfgsb
+
+Or alternatively using `conda`
+
+.. code-block::
+
+    conda install lbfgsb
+
+You might also clone the repository and install from source
+
+.. code-block::
+
+    pip install -e .
+
+Once the installation is done, given an optimization problem defined by an objective function and a feasible space:
 
 .. code-block:: python
 
@@ -430,9 +434,9 @@ or other dealings in the software.
 By using this software, you agree to accept full responsibility for any consequences,
 and you waive any claims against the authors or contributors.
 
-=======
-Contact
-=======
+==========
+📧 Contact
+==========
 
 For questions, suggestions, or contributions, you can reach out via:
 
@@ -440,6 +444,24 @@ For questions, suggestions, or contributions, you can reach out via:
 - GitHub: https://github.com/antoinecollet5/lbfgsb
 
 We welcome contributions!
+
+=============
+📚 References
+=============
+
+[1] R. H. Byrd, P. Lu and J. Nocedal. A Limited Memory Algorithm for Bound
+Constrained Optimization, (1995), SIAM Journal on Scientific and
+Statistical Computing, 16, 5, pp. 1190-1208.
+
+[2] C. Zhu, R. H. Byrd and J. Nocedal. L-BFGS-B: Algorithm 778: L-BFGS-B,
+FORTRAN routines for large scale bound constrained optimization (1997),
+ACM Transactions on Mathematical Software, 23, 4, pp. 550 - 560.
+
+[3] J.L. Morales and J. Nocedal. L-BFGS-B: Remark on Algorithm 778: L-BFGS-B,
+FORTRAN routines for large scale bound constrained optimization (2011),
+ACM Transactions on Mathematical Software, 38, 1.
+
+* Free software: SPDX-License-Identifier: BSD-3-Clause
 
 
 .. |License| image:: https://img.shields.io/badge/License-BSD_3--Clause-blue.svg
