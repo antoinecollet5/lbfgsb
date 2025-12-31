@@ -361,6 +361,7 @@ def subspace_minimization(
     is_use_numba_jit: bool
         Whether to use `numba` just-in-time compilation to speed-up the computation
         intensive part of the algorithm. The default is False.
+        .. versionadded:: 1.0
 
     Returns
     -------

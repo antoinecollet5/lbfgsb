@@ -151,7 +151,7 @@ def minimize_lbfgsb(
     x0 : ndarray, shape (n,)
         Initial guess. Array of real elements of size (n,),
         where ``n`` is the number of independent variables.
-    jac : {callable,  '2-point', '3-point', 'cs', bool}, optional
+    jac : {callable,  '2-point', '3-point', 'cs'}, optional
         Method for computing the gradient vector.
         If it is a callable, it should be a function that returns the gradient
         vector:
@@ -175,7 +175,6 @@ def minimize_lbfgsb(
 
             ``update_fun_def(x, f0, f0_old, grad, x_deque, grad_deque)
             -> f0, f0_old, grad, updated grad_deque``
-
     bounds : sequence or `Bounds`, optional
         Bounds on variables. There are two ways to specify the bounds:
 
@@ -194,6 +193,7 @@ def minimize_lbfgsb(
         or `ftol`) or if some scaling must be performed before starting L-BFGS-B. It
         avoids recalculating some expensive objective functions and gradients.
         This is a unique feature among L-BFGS-B implementations. The default is None.
+        .. versionadded:: 1.0
     maxcor : int
         The maximum number of variable metric corrections used to
         define the limited memory matrix. (The limited memory BFGS
@@ -317,6 +317,7 @@ def minimize_lbfgsb(
         of 2-5 folds for large scale problems. If `numba` is not available,
         a warning is raised and the algorithm falls back to a non jit version.
         The default is True.
+        .. versionadded:: 1.0
 
     Returns
     -------

@@ -267,6 +267,7 @@ def update_lbfgs_matrices(
     is_use_numba_jit: bool
         Whether to use `numba` just-in-time compilation to speed-up the computation
         intensive part of the algorithm. The default is False.
+        .. versionadded:: 1.0
 
     Returns
     -------
@@ -487,6 +488,7 @@ def update_X_and_G(
     is_use_numba_jit: bool
         Whether to use `numba` just-in-time compilation to speed-up the computation
         intensive part of the algorithm. The default is False.
+        .. versionadded:: 1.0
 
     Returns
     -------
@@ -535,6 +537,7 @@ def make_X_and_G_respect_strong_wolfe(
     is_use_numba_jit: bool
         Whether to use `numba` just-in-time compilation to speed-up the computation
         intensive part of the algorithm. The default is False.
+        .. versionadded:: 1.0
 
     Returns
     -------

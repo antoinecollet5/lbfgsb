@@ -2,7 +2,7 @@
 Changelog
 ==============
 
-1.0.0 (2025-12-19)
+1.0.0 (2025-12-31)
 ------------------
 
 This is the first stable release with a non negligeable number of new features and
