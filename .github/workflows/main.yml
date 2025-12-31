@@ -59,7 +59,7 @@ jobs:
         run: |
           pip install uv
           uv venv
-          uv pip install -e .[tests, examples, docs]
+          uv pip install -e . lbfgsb[tests,examples,docs]
 
       - name: Set up xvfb
         run: |
