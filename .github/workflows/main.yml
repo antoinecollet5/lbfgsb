@@ -27,7 +27,7 @@ jobs:
         run: |
           pip install uv
           uv venv
-          uv pip install -e ".[lint]"
+          uv pip install -e ".[all]"
 
       - name: Run pre-commit hooks
         run: |
@@ -57,7 +57,7 @@ jobs:
         run: |
           pip install uv
           uv venv
-          uv pip install -e ".[test]"
+          uv pip install -e ".[tests]"
 
       - name: Set up xvfb
         run: |
