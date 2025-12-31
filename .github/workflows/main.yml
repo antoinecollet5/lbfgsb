@@ -44,6 +44,10 @@ jobs:
 
   test:
     runs-on: ubuntu-22.04
+    # need to deactivate jit so that coverage accounts for numba jitted code
+    # the jitted part is tested with tox so it does not matter.
+    env:
+      NUMBA_DISABLE_JIT : 1
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -53,13 +57,11 @@ jobs:
         with:
           python-version: 3.13
 
-      # do not install numbaso that the jitted code is also included in the coverage
-      # the jitted part is tested with tox so it does not matter.
       - name: Install dependencies with uv
         run: |
           pip install uv
           uv venv
-          uv pip install -e . lbfgsb[tests,examples,docs]
+          uv pip install -e .[all]
 
       - name: Set up xvfb
         run: |
