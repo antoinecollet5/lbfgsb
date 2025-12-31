@@ -57,7 +57,8 @@ jobs:
         run: |
           pip install uv
           uv venv
-          uv pip install -e ".[all]"
+          uv pip install -e .[all]
+          uv export NUMBA_DISABLE_JIT=0
 
       - name: Set up xvfb
         run: |
