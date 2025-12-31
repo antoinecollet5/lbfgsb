@@ -120,7 +120,7 @@ Once the installation is done, given an optimization problem defined by an objec
 
    lb = np.array([-2, -2])  # lower bounds
    ub = np.array([2, 2])  # upper bounds
-   bounds = np.array((l, u)).T  # The number of variables to optimize is len(bounds)
+   bounds = np.array((lb, ub)).T  # The number of variables to optimize is len(bounds)
    x0 = np.array([-0.8, -1])  # The initial guess
 
 The optimal solution can be found following:
@@ -165,7 +165,7 @@ wrappers if needed.
         """
         Return a float and takes args and kwargs.
         """
-        retur my_cost_function(x, 10, 239.9, kwargs1=1, kwargs2="blabla2")
+        return my_cost_function(x, 10, 239.9, kwargs1=1, kwargs2="blabla2")
 
 
 See all use cases in the tutorials section of the `documentation <https://lbfgsb.readthedocs.io/en/latest/usage.html>`_.
