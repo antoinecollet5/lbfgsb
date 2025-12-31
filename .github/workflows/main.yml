@@ -23,14 +23,17 @@ jobs:
         with:
           python-version: 3.13
 
-      - name: Install dependencies
-        run: pip install -e ".[lint]"
-
-      - name: Run pre-commit
+      - name: Install dependencies with uv
         run: |
-          pip install pre-commit
-          pre-commit run --all-files
-        continue-on-error: true
+          pip install uv
+          uv venv
+          uv pip install -e ".[lint]"
+
+      - name: Run pre-commit hooks
+        run: |
+          uv run pre-commit run --all-files  # Run pre-commit inside the uv virtual environment
+
+        continue-on-error: false
 
       - name: Upload pre-commit report
         if: ${{ failure() }}
@@ -41,8 +44,6 @@ jobs:
 
   test:
     runs-on: ubuntu-22.04
-    env:
-      NUMBA_DISABLE_JIT : 1
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -52,8 +53,11 @@ jobs:
         with:
           python-version: 3.13
 
-      - name: Install project
-        run: pip install -e ".[all]"
+      - name: Install dependencies with uv
+        run: |
+          pip install uv
+          uv venv
+          uv pip install -e ".[test]"
 
       - name: Set up xvfb
         run: |
@@ -63,14 +67,19 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          xvfb-run py.test -s --cov=lbfgsb --cov-report xml --cov-report html --cov-report term --cov-config=.coveragerc --color=yes
-        continue-on-error: false
+          uv run xvfb-run pytest \
+            -s \
+            --cov=nested_grid_plotter \
+            --cov-report xml \
+            --cov-report html \
+            --cov-report term \
+            --cov-config=.coveragerc \
+            --color=yes
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v4.0.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-
 
   tox:
     runs-on: ubuntu-22.04
