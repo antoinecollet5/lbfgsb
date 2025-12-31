@@ -10,6 +10,10 @@ webbrowser.open("file://" + pathname2url(os.path.abspath(sys.argv[1])))
 endef
 export BROWSER_PYSCRIPT
 
+# need to deactivate jit so that coverage accounts for numba jitted code
+NUMBA_DISABLE_JIT := 1
+export NUMBA_DISABLE_JIT
+
 define PRINT_HELP_PYSCRIPT
 import re, sys
 

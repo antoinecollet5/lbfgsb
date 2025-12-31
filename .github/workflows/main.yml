@@ -53,12 +53,15 @@ jobs:
         with:
           python-version: 3.13
 
+      # need to deactivate jit so that coverage accounts for numba jitted code
+      # the jitted part is tested with tox so it does not matter.
       - name: Install dependencies with uv
         run: |
           pip install uv
           uv venv
           uv pip install -e .[all]
-          uv export NUMBA_DISABLE_JIT=0
+          NUMBA_DISABLE_JIT := 1
+          uv export NUMBA_DISABLE_JIT
 
       - name: Set up xvfb
         run: |
