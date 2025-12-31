@@ -416,7 +416,7 @@ Hessian matching the new definition of `fun`, the gradient sequence must be upda
 
 This project is released under the **BSD 3-Clause License**.
 
-Copyright (c) 2025, Antoine COLLET. All rights reserved.
+Copyright (c) 2026, Antoine COLLET. All rights reserved.
 
 For more details, see the `LICENSE <https://github.com/antoinecollet5/lbfgsb/blob/master/LICENSE>`_ file included in this repository.
 
