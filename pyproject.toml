@@ -68,7 +68,7 @@ dev-dependencies = [
 ]
 
 [project.optional-dependencies]
-all = ['lbfgsb[numba, docs, tests, lint, install]']
+all = ['lbfgsb[numba, install, lint, tests, examples, docs]']
 numba = ["numba"]
 docs = [
     "sphinx<9",
@@ -89,6 +89,7 @@ tests = [
     "coverage",
     "numdifftools",
 ]
+examples = ["matplotlib"]
 lint = ["pre-commit", "codespell>=2.1.0", "ruff", "ty ; python_version > '3.7'"]
 install = ["pip", "wheel"]
 
