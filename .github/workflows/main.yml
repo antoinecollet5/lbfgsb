@@ -69,7 +69,7 @@ jobs:
         run: |
           uv run xvfb-run pytest \
             -s \
-            --cov=nested_grid_plotter \
+            --cov=lbfgsb \
             --cov-report xml \
             --cov-report html \
             --cov-report term \
@@ -84,7 +84,7 @@ jobs:
   tox:
     runs-on: ubuntu-22.04
     strategy:
-      max-parallel: 6
+      max-parallel: 8
       matrix:
         python-version: ["3.7", "3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
