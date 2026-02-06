@@ -1,9 +1,8 @@
-.. highlight:: shell
+.. _installation_ref:
 
-============
+=================
 Installation
-============
-
+=================
 
 Stable release
 --------------
@@ -14,7 +13,7 @@ To install lbfgsb, run this command in your terminal:
 
     $ pip install lbfgsb
 
-This is the preferred method to install lbfsgb, as it will always install the most recent stable release.
+This is the preferred method to install lbfgsb, as it will always install the most recent stable release.
 
 If you don't have `pip`_ installed, this `Python installation guide`_ can guide
 you through the process.
@@ -26,7 +25,7 @@ you through the process.
 From sources
 ------------
 
-The sources for lbfsgb can be downloaded from the `Gitlab repo`_.
+The sources for lbfgsb can be downloaded from the `Github repo`_.
 
 You can either clone the public repository:
 
@@ -34,18 +33,20 @@ You can either clone the public repository:
 
     $ git clone git://github.com/antoinecollet5/lbfgsb
 
-Or download the `tarball`_:
-
-.. code-block:: console
-
-    $ curl -OJL https://github.com/antoinecollet5/lbfgsb/tarball/master
-
 Once you have a copy of the source, you can install it with:
 
 .. code-block:: console
 
-    $ python setup.py install
+    $ pip install -e .[all]
 
 
-.. _Gitlab repo: https://github.com/antoinecollet5/lbfgsb
+Tutorials
+---------
+
+For a quick overview of nested-grid-plotter functionality, see the :ref:`user guide<user_guide_ref>`.
+
+You can also refer to the :ref:`reference guide<api_reference_ref>` for an exhaustive
+list of all what is possible with nested-grid-plotter.
+
+.. _Github repo: https://github.com/antoinecollet5/lbfgsb
 .. _tarball: https://github.com/antoinecollet5/lbfgsb/tarball/master
