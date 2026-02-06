@@ -149,7 +149,7 @@ class Report(ScoobyReport):
         # Optional packages.
         optional = ["numba", "matplotlib"]
 
-        ScoobyReport.__init__(
+        super().__init__(
             self,
             additional=additional,
             core=core,
