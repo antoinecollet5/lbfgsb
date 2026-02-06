@@ -80,11 +80,6 @@ jobs:
             --cov-config=.coveragerc \
             --color=yes
 
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v4.0.1
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-
   tox:
     runs-on: ubuntu-22.04
     strategy:
@@ -111,7 +106,17 @@ jobs:
           python -m pip install tox tox-gh-actions
 
       - name: Run tox
-        run: tox
+        run: |
+          tox
+          coverage combine
+          coverage report -m
+          coverage html
+          coverage xml
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4.0.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Upload distribution artifacts
         uses: actions/upload-artifact@v4
