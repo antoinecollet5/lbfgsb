@@ -1,0 +1,10 @@
+[run]
+branch = true
+parallel = true
+source =
+    lbfgsb
+
+[paths]
+source =
+    lbfgsb
+    */site-packages/lbfgsb
