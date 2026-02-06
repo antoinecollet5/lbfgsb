@@ -45,7 +45,7 @@ Tutorials
 
 For a quick overview of nested-grid-plotter functionality, see the :ref:`user guide<user_guide_ref>`.
 
-You can also refer to the :ref:`reference guide<api_reference_ref>` for an exhaustive
+You can also refer to the :ref:`reference guide<api_ref>` for an exhaustive
 list of all what is possible with nested-grid-plotter.
 
 .. _Github repo: https://github.com/antoinecollet5/lbfgsb

@@ -12,7 +12,7 @@ Types of Contributions
 ----------------------
 
 Reporting Bugs and Defects
-~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 A defect is any variance between the actual and expected behavior. This includes bugs in the code, issues in the documentation, or problems with visualizations.
 
