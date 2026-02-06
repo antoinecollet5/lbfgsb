@@ -92,7 +92,7 @@ References
     ACM Transactions on Mathematical Software, 38, 1.
 
 """
-
+import scooby
 from lbfgsb import base, bfgsmats, cauchy, linesearch, scalar_function, subspacemin
 from lbfgsb.__about__ import __author__, __email__, __version__
 from lbfgsb.benchmarks import (
@@ -116,6 +116,33 @@ from lbfgsb.benchmarks import (
 from lbfgsb.main import InternalState, minimize_lbfgsb
 from lbfgsb.utils import extract_hess_inv_diag, get_grad_projection_inf_norm
 
+
+class Report(scooby.Report):
+    def __init__(self, additional=None, ncol=3, text_width=80, sort=False):
+        """Initiate a scooby.Report instance."""
+
+        # Mandatory packages.
+        core = [
+            "lbfgsb",
+            "numpy",
+            "scipy",
+            "typing_extensions",
+            "scooby",
+        ]
+
+        # Optional packages.
+        optional = ["numba", "matplotlib"]
+
+        scooby.Report.__init__(
+            self,
+            additional=additional,
+            core=core,
+            optional=optional,
+            ncol=ncol,
+            text_width=text_width,
+            sort=sort,
+        )
+        
 __all__ = [
     "minimize_lbfgsb",
     "extract_hess_inv_diag",
@@ -146,4 +173,5 @@ __all__ = [
     "subspacemin",
     "get_grad_projection_inf_norm",
     "InternalState",
+    "Report"
 ]
