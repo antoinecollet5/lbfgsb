@@ -502,10 +502,6 @@ ACM Transactions on Mathematical Software, 38, 1.
 .. |Precommit: enabled| image:: https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit
    :target: https://github.com/pre-commit/pre-commit
 
-.. |Code style: black| image:: https://img.shields.io/badge/code%20style-black-000000.svg?style=flat
-    :target: https://github.com/psf/black
-    :alt: Black
-
 .. |Ruff| image:: https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json
     :target: https://github.com/astral-sh/ruff
     :alt: Ruff
