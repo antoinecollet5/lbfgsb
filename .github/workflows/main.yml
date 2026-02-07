@@ -93,8 +93,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -109,23 +108,23 @@ jobs:
           uv run pytest \
             --cov=lbfgsb \
             --cov-config=.coveragerc \
-            --cov-report= \
+            --cov-report=term \
             --color=yes
 
-      - name: Rename coverage file
+      - name: Collect coverage files
         if: always()
         run: |
-          if [ -f .coverage ]; then
-            mv .coverage .coverage.${{ matrix.python-version }}
-          fi
+          mkdir -p coverage-files
+          cp .coverage* coverage-files/ 2>/dev/null || true
 
       - name: Upload coverage artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-${{ matrix.python-version }}
-          path: .coverage.${{ matrix.python-version }}
+          path: coverage-files
           if-no-files-found: error
+
 
   coverage-merge:
     runs-on: ubuntu-22.04
