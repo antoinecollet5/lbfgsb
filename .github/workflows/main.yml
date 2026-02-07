@@ -70,8 +70,12 @@ jobs:
           pytest -v --cov=lbfgsb --cov-config=.coveragerc --cov-report=
           echo $COVERAGE_FILE
 
+      - name: find
+        run: find . -type f -name '.coverage*'
+
       - name: Rename coverage file
         run: |
+          echo $COVERAGE_FILE
           mv .coverage .coverage.${{ matrix.python-version }}
 
       - name: Upload coverage artifact
@@ -117,6 +121,12 @@ jobs:
             --cov-report=term \
             --color=yes
           echo $COVERAGE_FILE
+
+      - name: echo
+        run: echo $COVERAGE_FILE
+
+      - name: find
+        run: find . -type f -name '.coverage*'
 
       - name: Collect coverage files
         if: always()
