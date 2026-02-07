@@ -4,7 +4,7 @@ on:
   push:
     # on every branch
     branches:
-      - '*'
+      - '**'
 
 env:
   PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
@@ -65,19 +65,18 @@ jobs:
           pip install -e .[all]
 
       - name: Run tests
+        env:
+          COVERAGE_FILE: .coverage.${{ matrix.python-version }}
         run: |
           source .venv/bin/activate
-          pytest --cov=lbfgsb --cov-config=.coveragerc --cov-report=
-
-      - name: Rename coverage file
-        run: |
-          mv .coverage .coverage.${{ matrix.python-version }}
+          pytest -v --cov=lbfgsb --cov-config=.coveragerc --cov-report=
 
       - name: Upload coverage artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-${{ matrix.python-version }}
-          path: .coverage.${{ matrix.python-version }}
+          path: '${{ github.workspace }}/.coverage.${{ matrix.python-version }}'
+          include-hidden-files: true
           if-no-files-found: error
 
   tests:
@@ -109,6 +108,8 @@ jobs:
 
 
       - name: Run tests with coverage
+        env:
+          COVERAGE_FILE: .coverage.${{ matrix.python-version }}
         run: |
           uv run pytest \
             --cov=lbfgsb \
@@ -116,18 +117,16 @@ jobs:
             --cov-report=term \
             --color=yes
 
-      - name: Collect coverage files
-        if: always()
-        run: |
-          mkdir -p coverage-files
-          cp .coverage* coverage-files/ 2>/dev/null || true
+      - name: find
+        run: find . -type f -name '.coverage*'
 
       - name: Upload coverage artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-${{ matrix.python-version }}
-          path: coverage-files
+          path: ${{ github.workspace }}/.coverage.${{ matrix.python-version }}
+          include-hidden-files: true
           if-no-files-found: error
 
 
@@ -155,8 +154,8 @@ jobs:
 
       - name: Combine coverage
         run: |
-          ls -la coverage-data/**/*
-          coverage combine coverage-data/**/.coverage.*
+          find coverage-data -name '.coverage*' -print
+          coverage combine $(find coverage-data -name '.coverage*')
           coverage report -m
           coverage html
           coverage xml
