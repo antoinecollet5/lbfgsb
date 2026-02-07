@@ -78,6 +78,7 @@ jobs:
         with:
           name: coverage-${{ matrix.python-version }}
           path: .coverage.${{ matrix.python-version }}
+          if-no-files-found: error
 
   tests:
     runs-on: ubuntu-22.04
@@ -124,7 +125,7 @@ jobs:
         with:
           name: coverage-${{ matrix.python-version }}
           path: .coverage.${{ matrix.python-version }}
-          if-no-files-found: ignore
+          if-no-files-found: error
 
   coverage-merge:
     runs-on: ubuntu-22.04
