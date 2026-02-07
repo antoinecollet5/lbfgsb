@@ -74,7 +74,7 @@ jobs:
         run: find . -type f -name '.coverage*'
 
       - name: find
-        run: find . -type f -name '.coverage*'
+        run: find ~+ -type f -name '.coverage*'
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v6
