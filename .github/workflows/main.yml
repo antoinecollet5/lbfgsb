@@ -80,7 +80,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: coverage-${{ matrix.python-version }}
-          path: ${{ matrix.dir }}/.coverage
+          path: '${{ github.workspace }}/.coverage'
           if-no-files-found: error
 
   tests:
