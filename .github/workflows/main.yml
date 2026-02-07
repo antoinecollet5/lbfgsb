@@ -78,6 +78,9 @@ jobs:
           echo $COVERAGE_FILE
           mv .coverage .coverage.${{ matrix.python-version }}
 
+      - name: find
+        run: find . -type f -name '.coverage*'
+
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
         with:
@@ -133,6 +136,9 @@ jobs:
         run: |
           mkdir -p coverage-files
           cp .coverage* coverage-files/ 2>/dev/null || true
+
+      - name: find
+        run: find . -type f -name '.coverage*'
 
       - name: Upload coverage artifact
         if: always()
