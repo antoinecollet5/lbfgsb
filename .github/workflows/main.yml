@@ -154,8 +154,8 @@ jobs:
 
       - name: Combine coverage
         run: |
-          ls -la coverage-data/**/*
-          coverage combine coverage-data/**/.coverage.*
+          find coverage-data -name '.coverage*' -print
+          coverage combine $(find coverage-data -name '.coverage*')
           coverage report -m
           coverage html
           coverage xml
