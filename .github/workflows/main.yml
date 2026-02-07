@@ -103,6 +103,11 @@ jobs:
           uv venv
           uv pip install -e .[all]
 
+      - name: Debug pytest plugins
+        run: |
+          uv run pytest --trace-config | grep cov || true
+
+
       - name: Run tests with coverage
         run: |
           uv run pytest \
