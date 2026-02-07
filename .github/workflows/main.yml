@@ -128,7 +128,9 @@ jobs:
 
   coverage-merge:
     runs-on: ubuntu-22.04
-    needs: tests-legacy, tests
+    needs:
+      -tests-legacy
+      - tests
 
     steps:
       - uses: actions/checkout@v4
