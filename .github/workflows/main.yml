@@ -73,11 +73,6 @@ jobs:
       - name: find
         run: find . -type f -name '.coverage*'
 
-      - name: Rename coverage file
-        run: |
-          echo $COVERAGE_FILE
-          mv .coverage .coverage.${{ matrix.python-version }}
-
       - name: find
         run: find . -type f -name '.coverage*'
 
@@ -85,7 +80,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: coverage-${{ matrix.python-version }}
-          path: ./.coverage.${{ matrix.python-version }}
+          path: .coverage
           if-no-files-found: error
 
   tests:
