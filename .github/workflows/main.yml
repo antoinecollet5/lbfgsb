@@ -65,10 +65,12 @@ jobs:
           pip install -e .[all]
 
       - name: Run tests
+        env:
+          COVERAGE_FILE: .coverage.{{ matrix.python-version }}
         run: |
           source .venv/bin/activate
           pytest -v --cov=lbfgsb --cov-config=.coveragerc --cov-report=
-          echo $COVERAGE_FILE
+          echo $
 
       - name: find
         run: find . -type f -name '.coverage*'
@@ -80,7 +82,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: coverage-${{ matrix.python-version }}
-          path: '${{ github.workspace }}/.coverage'
+          path: '${{ github.workspace }}/.coverage.{{ matrix.python-version }}'
           include-hidden-files: true
           if-no-files-found: error
 
