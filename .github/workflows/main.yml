@@ -129,7 +129,7 @@ jobs:
   coverage-merge:
     runs-on: ubuntu-22.04
     needs:
-      -tests-legacy
+      - tests-legacy
       - tests
 
     steps:
