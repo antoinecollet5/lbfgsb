@@ -70,13 +70,6 @@ jobs:
         run: |
           source .venv/bin/activate
           pytest -v --cov=lbfgsb --cov-config=.coveragerc --cov-report=
-          echo $
-
-      - name: find
-        run: find . -type f -name '.coverage*'
-
-      - name: find
-        run: find ~+ -type f -name '.coverage*'
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v6
@@ -129,10 +122,10 @@ jobs:
 
       - name: Upload coverage artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-${{ matrix.python-version }}
-          path: coverage.${{ matrix.python-version }}
+          path: ${{ github.workspace }}/.coverage.${{ matrix.python-version }}
           include-hidden-files: true
           if-no-files-found: error
 
