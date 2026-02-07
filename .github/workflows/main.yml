@@ -42,84 +42,79 @@ jobs:
           name: pre-commit-report
           path: pre-commit-report
 
-  test:
-    runs-on: ubuntu-22.04
-    # need to deactivate jit so that coverage accounts for numba jitted code
-    # the jitted part is tested with tox so it does not matter.
-    env:
-      NUMBA_DISABLE_JIT : 1
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: 3.13
-
-      - name: Install dependencies with uv
-        run: |
-          pip install uv
-          uv venv
-          uv pip install -e .[all]
-
-      - name: Set up xvfb
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb
-          sleep 3
-
-      - name: Run tests with coverage
-        run: |
-          uv run xvfb-run pytest \
-            -s \
-            --cov=lbfgsb \
-            --cov-report xml \
-            --cov-report html \
-            --cov-report term \
-            --cov-config=.coveragerc \
-            --color=yes
-
-  tox:
+  tests:
     runs-on: ubuntu-22.04
     strategy:
-      max-parallel: 8
+      fail-fast: false
       matrix:
+        max-parallel: 8
         python-version: ["3.7", "3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+
+    env:
+      NUMBA_DISABLE_JIT: 1
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install system dependencies
+      - name: Install uv + deps
         run: |
-          sudo apt-get update
-          sudo apt-get install -y pandoc
+          pip install uv
+          uv venv
+          uv pip install -e .[all]
 
-      - name: Install dependencies
+      - name: Run tests with coverage
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install tox tox-gh-actions
+          uv run pytest \
+            --cov=lbfgsb \
+            --cov-config=.coveragerc \
+            --cov-report= \
+            --color=yes
 
-      - name: Run tox
+      - name: Rename coverage file
         run: |
-          tox
-          coverage combine
+          mv .coverage .coverage.${{ matrix.python-version }}
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.python-version }}
+          path: .coverage.${{ matrix.python-version }}
+
+  coverage-merge:
+    runs-on: ubuntu-22.04
+    needs: tests
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.13
+
+      - name: Install coverage
+        run: pip install coverage
+
+      - name: Download all coverage artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: coverage-data
+
+      - name: Combine coverage
+        run: |
+          ls -la coverage-data/**/*
+          coverage combine coverage-data/**/.coverage.*
           coverage report -m
           coverage html
           coverage xml
 
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v4.0.1
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-
-      - name: Upload distribution artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ubuntu-python-package-${{matrix.python-version}}
-          path: dist/*.whl
+          files: coverage.xml
