@@ -305,8 +305,8 @@ def update_lbfgs_matrices(
         sk = X[-1] - X[-2]
         yk = G[-1] - G[-2]
         # sk = X[-1] - X[-2]
-        sTy = sk @ yk  # type: ignore
-        yTy = yk @ yk  # type: ignore
+        sTy = sk @ yk
+        yTy = yk @ yk
         mats.theta = yTy / sTy
 
         m = len(X) - 1
@@ -402,8 +402,8 @@ def is_update_X_and_G(
         Whether the current step as been accepted.
     """
     yk = gk - g_old
-    sTy = (xk - x_old).dot(yk)  # type: ignore
-    yTy = (yk).dot(yk)  # type: ignore
+    sTy = (xk - x_old).dot(yk)
+    yTy = (yk).dot(yk)
 
     # See eq. (3.9) in [1].
     # One can show that BFGS update (2.19) generates positive definite approximations

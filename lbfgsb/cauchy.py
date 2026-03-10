@@ -152,7 +152,7 @@ def _get_cauchy_point_numpy(
     # iter in the fortran code and b in [1]
     _i = 0
     # break point index (b in section 4 [1])
-    ibp: int = sorted_t_idx[_i]
+    ibp: int = sorted_t_idx[_i].item()
     # value of the smallest breakpoint, t in section 4 [1]
     t_cur: float = t[ibp]
     # previous breakpoint value
@@ -221,7 +221,7 @@ def _get_cauchy_point_numpy(
 
         _i += 1
         if _i + 1 < nbreak:
-            ibp = sorted_t_idx[_i + 1]
+            ibp = sorted_t_idx[_i + 1].item()
             t_cur = t[ibp]
         else:
             # to ensure that delta_t > delta_t_min and break the while
