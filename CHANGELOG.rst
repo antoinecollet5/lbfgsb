@@ -2,6 +2,11 @@
 Changelog
 ==============
 
+1.0.1 (2026-02-10)
+------------------
+
+* FIX: `typing_extensions` and `packaging` dependencies for all python versions.
+
 1.0.0 (2025-12-31)
 ------------------
 
