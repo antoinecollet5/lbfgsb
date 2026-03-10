@@ -44,6 +44,8 @@ jobs:
 
   tests-legacy:
     runs-on: ubuntu-22.04
+    needs:
+      - static_analysis
     strategy:
       matrix:
         python-version: ["3.7"]
@@ -81,6 +83,8 @@ jobs:
 
   tests:
     runs-on: ubuntu-22.04
+    needs:
+      - static_analysis
     strategy:
       fail-fast: false
       matrix:
