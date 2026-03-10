@@ -102,11 +102,6 @@ jobs:
           uv venv
           uv pip install -e .[all]
 
-      - name: Debug pytest plugins
-        run: |
-          uv run pytest --trace-config | grep cov || true
-
-
       - name: Run tests with coverage
         env:
           COVERAGE_FILE: .coverage.${{ matrix.python-version }}
