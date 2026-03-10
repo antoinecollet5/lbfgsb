@@ -19,8 +19,6 @@ keywords = [
 ]
 license = { file = "LICENSE" }
 dependencies = [
-    "setuptools",
-    "wheel",
     "numpy>=1.2",
     "scipy>=1.6.2",
     "packaging",
