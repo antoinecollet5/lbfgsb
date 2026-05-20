@@ -4,6 +4,7 @@ Benchmark with the Rosenbrock function
 
 from time import perf_counter
 
+import cupy
 import matplotlib.pyplot as plt
 from lbfgsb import minimize_lbfgsb
 from lbfgsb.benchmarks import rosenbrock, rosenbrock_grad
@@ -22,7 +23,7 @@ times_scipy = []
 
 NTRIALS = 5
 
-set_backend_to_cupy()
+# set_backend_to_cupy()
 
 for PROBLEM_SIZE in problem_sizes:
     # Set up problem bounds and initial guess
@@ -97,6 +98,10 @@ plt.errorbar(
 plt.xlabel("Problem size")
 plt.ylabel("Time (s) - mean ± std")
 plt.legend()
-plt.title("Benchmark: L-BFGS-B (cupy) vs scipy")
+print(np.__name__)
+if np._srcmodule == cupy:
+    plt.title("Benchmark: L-BFGS-B (cupy) vs scipy")
+else:
+    plt.title("Benchmark: L-BFGS-B (numpy) vs scipy")
 plt.grid(True, which="both", linestyle="--", alpha=0.7)
 plt.show()

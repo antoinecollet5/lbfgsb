@@ -31,6 +31,7 @@ from typing import Optional
 
 from packaging.version import Version
 from scipy import __version__ as spversion
+from scipy.optimize import _dcsrch
 
 from lbfgsb._numba_helpers import njit
 from lbfgsb.mathops import np, sp
@@ -306,9 +307,7 @@ def line_search(
         # steplength, f0, _, task = dcsrch(
         #     steplength_0, phi0=f0, derphi0=dphi0, maxiter=max_iter
         # )
-        dcsrch = sp.optimize._dcsrch.DCSRCH(
-            phi, dphi, ftol, gtol, xtol, 0.0, max_steplength
-        )
+        dcsrch = _dcsrch.DCSRCH(phi, dphi, ftol, gtol, xtol, 0.0, max_steplength)
 
     while _iter < max_iter:
         if is_use_minpack2:  # scipy older than 1.12, uses the Fortran implementation

@@ -7,7 +7,9 @@ import warnings
 
 import numpy as np
 import scipy as sp
+import scipy.linalg as la
 from scipy import optimize
+from scipy.linalg import cholesky
 
 
 class BackendShim:
@@ -26,10 +28,22 @@ class BackendShim:
 _np = np
 _sp = sp
 _optimize = optimize
+_la = la
+
+
+# Go through alias to handle that scipy and cupy have different defaults,
+# lbfgsb requires that lower=True, which is cupy's default, but not scipy's
+
+
+# This was failing with lambda functions
+_cholesky = lambda x: cholesky(x, lower=True)
+
 
 np = BackendShim(np)
 sp = BackendShim(sp)
 optimize = BackendShim(optimize)
+la = BackendShim(la)
+cholesky_factorization = _cholesky
 
 
 def set_backend_to_cupy():
@@ -37,15 +51,20 @@ def set_backend_to_cupy():
 
     try:
         import cupy as cp
+        import cupy.linalg as cla
         import cupyx.scipy as csp
-        import cupyx.scipy.optimize as csp_optimize
+        from cupy.linalg import cholesky as ccholesky
+
     except ImportError:
         warnings.warn("cupy not installed, backend remains numpy")
         return
 
     np._srcmodule = cp
     sp._srcmodule = csp
-    optimize._srcmodule = csp_optimize
+    la._srcmodule = cla
+
+    # Create a wrapper that passes lower=True to cupy's cholesky
+    cholesky_factorization = ccholesky
 
     return
 
@@ -55,4 +74,7 @@ def set_backend_to_defaults():
     np._srcmodule = _np
     sp._srcmodule = _sp
     optimize._srcmodule = _optimize
+    la._srcmodule = _la
+    cholesky = _cholesky  # Restore scipy's cholesky with lower=True
+
     return
