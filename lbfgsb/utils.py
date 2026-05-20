@@ -3,9 +3,9 @@
 
 """Provide optimization utilities."""
 
-import numpy as np
 from scipy.optimize import LbfgsInvHessProduct
 
+from lbfgsb.mathops import np
 from lbfgsb.types import NDArrayFloat
 
 

@@ -15,8 +15,12 @@ from lbfgsb.bfgsmats import (
     make_X_and_G_respect_strong_wolfe,
     update_X_and_G,
 )
-from lbfgsb.mathops import np
+from lbfgsb.mathops import np, set_backend_to_cupy
 from lbfgsb.types import NDArrayFloat
+
+# enable cupy backend for GPU
+set_backend_to_cupy()
+
 
 logger: logging.Logger = logging.getLogger("L-BFGS-B")
 logger.setLevel(logging.INFO)

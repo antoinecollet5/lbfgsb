@@ -2,9 +2,12 @@
 # Copyright (c) 2025 Antoine COLLET
 
 from lbfgsb import extract_hess_inv_diag, get_grad_projection_inf_norm
-from lbfgsb.mathops import np, sp
+from lbfgsb.mathops import np, set_backend_to_cupy, sp
 from numpy.testing import assert_allclose
 from scipy.optimize import minimize
+
+# enable cupy backend for GPU
+set_backend_to_cupy()
 
 
 def test_1():

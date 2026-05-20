@@ -36,10 +36,8 @@ import logging
 from collections import deque
 from typing import Deque, Optional, Tuple
 
-import numpy as np
-import scipy as sp
-
 from lbfgsb._numba_helpers import njit
+from lbfgsb.mathops import np, sp
 from lbfgsb.types import NDArrayFloat
 
 

@@ -7,9 +7,12 @@ from typing import Callable, Optional, Tuple
 import pytest
 from lbfgsb.base import get_bounds, is_any_inf
 from lbfgsb.linesearch import line_search, max_allowed_steplength
-from lbfgsb.mathops import np
+from lbfgsb.mathops import np, set_backend_to_cupy
 from lbfgsb.scalar_function import ScalarFunction
 from lbfgsb.types import NDArrayFloat
+
+# enable cupy backend for GPU
+set_backend_to_cupy()
 
 
 @pytest.mark.parametrize(

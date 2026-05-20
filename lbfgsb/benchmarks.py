@@ -12,8 +12,7 @@ Provide the following benchmark functions and their gradients.
 - styblinski_tang
 """
 
-import numpy as np
-
+from lbfgsb.mathops import np
 from lbfgsb.types import NDArrayFloat
 
 

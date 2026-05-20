@@ -9,13 +9,16 @@ from typing import Deque
 import pytest
 from lbfgsb import InternalState, minimize_lbfgsb
 from lbfgsb.main import is_f0_target_reached
-from lbfgsb.mathops import np
+from lbfgsb.mathops import np, set_backend_to_cupy
 from lbfgsb.types import NDArrayFloat
 from scipy.optimize import (
     LbfgsInvHessProduct,  # noqa : F401
     OptimizeResult,
     minimize,
 )
+
+# enable cupy backend for GPU
+set_backend_to_cupy()
 
 logger: logging.Logger = logging.getLogger("L-BFGS-B")
 logger.setLevel(logging.INFO)

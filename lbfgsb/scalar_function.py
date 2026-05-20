@@ -3,11 +3,10 @@
 
 from typing import Callable, Optional, Tuple, Union
 
-import numpy as np
 from numpy.typing import ArrayLike
-from scipy.optimize._numdiff import approx_derivative
 from typing_extensions import Literal  # for compatibility with python 3.7
 
+from lbfgsb.mathops import np, optimize, sp
 from lbfgsb.types import NDArrayFloat
 
 FD_METHODS = ("2-point", "3-point", "cs")
@@ -151,7 +150,7 @@ class ScalarFunction:
             def update_grad() -> None:
                 self._update_fun()
                 self.ngev += 1
-                self.g = approx_derivative(
+                self.g = optimize._numdiff.approx_derivative(
                     fun_wrapped, self.x, f0=self.f, **finite_diff_options
                 )
 

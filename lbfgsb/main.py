@@ -44,7 +44,6 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Callable, Deque, Optional, Tuple, Union
 
-import numpy as np
 from numpy.typing import ArrayLike
 from scipy.optimize import (
     LbfgsInvHessProduct,  # noqa : F401
@@ -70,6 +69,7 @@ from lbfgsb.bfgsmats import (
 )
 from lbfgsb.cauchy import get_cauchy_point
 from lbfgsb.linesearch import line_search
+from lbfgsb.mathops import np, sp
 from lbfgsb.scalar_function import ScalarFunction, prepare_scalar_function
 from lbfgsb.subspacemin import get_freev, subspace_minimization
 from lbfgsb.types import NDArrayFloat

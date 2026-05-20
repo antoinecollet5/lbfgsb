@@ -25,7 +25,10 @@ from lbfgsb import (
     styblinski_tang,
     styblinski_tang_grad,
 )
-from lbfgsb.mathops import np
+from lbfgsb.mathops import np, set_backend_to_cupy
+
+# enable cupy backend for GPU
+set_backend_to_cupy()
 
 
 @pytest.mark.parametrize(

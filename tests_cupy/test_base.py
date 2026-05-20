@@ -19,8 +19,11 @@ from lbfgsb.base import (
     is_any_inf,
     projgr,
 )
-from lbfgsb.mathops import np
+from lbfgsb.mathops import np, set_backend_to_cupy
 from lbfgsb.types import NDArrayFloat
+
+# enable cupy backend for GPU
+set_backend_to_cupy()
 
 
 @pytest.mark.parametrize(

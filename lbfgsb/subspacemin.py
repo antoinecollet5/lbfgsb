@@ -35,11 +35,9 @@ convex quadratic problems.
 import logging
 from typing import Optional, Tuple
 
-import numpy as np
-import scipy as sp
-
 from lbfgsb._numba_helpers import njit
 from lbfgsb.bfgsmats import LBFGSB_MATRICES, bmv, bmv_numba
+from lbfgsb.mathops import np, sp
 from lbfgsb.types import NDArrayFloat, NDArrayInt
 
 

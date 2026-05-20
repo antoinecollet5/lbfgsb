@@ -3,8 +3,9 @@
 
 """Provide types."""
 
-import numpy as np
 import numpy.typing as npt
+
+from lbfgsb.mathops import np
 
 NDArrayFloat = npt.NDArray[np.float64]
 NDArrayInt = npt.NDArray[np.int64]

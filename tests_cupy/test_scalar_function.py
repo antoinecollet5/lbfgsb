@@ -6,8 +6,11 @@ from contextlib import nullcontext as does_not_raise
 
 import pytest
 from lbfgsb.benchmarks import rosenbrock, rosenbrock_grad
-from lbfgsb.mathops import np
+from lbfgsb.mathops import np, set_backend_to_cupy
 from lbfgsb.scalar_function import FD_METHODS, ScalarFunction, prepare_scalar_function
+
+# enable cupy backend for GPU
+set_backend_to_cupy()
 
 
 @pytest.mark.parametrize(

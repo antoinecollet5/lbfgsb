@@ -29,12 +29,11 @@ import warnings
 from copy import copy
 from typing import Optional
 
-import numpy as np
-import scipy as sp
 from packaging.version import Version
 from scipy import __version__ as spversion
 
 from lbfgsb._numba_helpers import njit
+from lbfgsb.mathops import np, sp
 from lbfgsb.scalar_function import ScalarFunction
 from lbfgsb.types import NDArrayFloat
 
