@@ -29,12 +29,13 @@ import warnings
 from copy import copy
 from typing import Optional
 
+import numpy as tnp
 from packaging.version import Version
 from scipy import __version__ as spversion
 from scipy.optimize import _dcsrch
 
 from lbfgsb._numba_helpers import njit
-from lbfgsb.mathops import np, sp
+from lbfgsb.mathops import errorstate, np, sp
 from lbfgsb.scalar_function import ScalarFunction
 from lbfgsb.types import NDArrayFloat
 
@@ -86,7 +87,7 @@ def max_allowed_steplength(
     # Determine the maximum step length.
     if n_iter == 0:
         return 1.0  # we are not sure this is a good idea
-    with np.errstate(divide="ignore"):
+    with tnp.errstate(divide="ignore"):
         _mask = d != 0
         _tmp = np.where(
             d[_mask] > 0, (ub - x)[_mask] / d[_mask], (lb - x)[_mask] / d[_mask]
@@ -278,7 +279,7 @@ def line_search(
     if above_iter == 0 and not is_boxed:
         steplength_0 = min(1.0 / np.sqrt(d.dot(d)), max_steplength)
     else:
-        steplength_0 = 1.0
+        steplength_0 = np.array([1.0])
 
     # Support for python 3.7 and 3.8: the minpack2 wrapper has been removed from
     # scipy from version 1.12 and replaced with a python implementation.

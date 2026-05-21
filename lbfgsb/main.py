@@ -44,6 +44,7 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Callable, Deque, Optional, Tuple, Union
 
+import numpy as tnp
 from numpy.typing import ArrayLike
 from scipy.optimize import (
     LbfgsInvHessProduct,  # noqa : F401
@@ -73,6 +74,35 @@ from lbfgsb.mathops import np, sp
 from lbfgsb.scalar_function import ScalarFunction, prepare_scalar_function
 from lbfgsb.subspacemin import get_freev, subspace_minimization
 from lbfgsb.types import NDArrayFloat
+
+
+def _asnumpy(X):
+    """Convert CuPy array to NumPy array if needed.
+
+    CuPy arrays cannot be implicitly converted to NumPy arrays via np.array().
+    Instead, use .get() to explicitly convert CuPy arrays to NumPy arrays.
+
+    For deques (which store CuPy arrays), convert each element individually.
+
+    AI Disclosure:
+        this function was largely written by qwen3.5 while debugging the cupy backend
+    """
+    from collections import deque as Deque
+
+    # If X is a deque, convert each element to ensure it's a NumPy array
+    if isinstance(X, Deque):
+        # Convert deque of CuPy arrays to NumPy array
+        # First, convert each CuPy array element to NumPy
+        X_list = [x.get() if hasattr(x, "get") else x for x in X]
+        # Convert list of NumPy arrays to NumPy array
+        return tnp.asarray(X_list)
+
+    # For arrays, check if it's a CuPy array and convert
+    # CuPy arrays have .get() method to convert to NumPy
+    if hasattr(X, "get"):
+        return X.get()
+    # If not a CuPy array or NumPy array, assume it's already NumPy
+    return X
 
 
 @dataclass
@@ -614,8 +644,8 @@ def minimize_lbfgsb(
                         x=x,
                         success=istate.is_success,
                         hess_inv=LbfgsInvHessProduct(
-                            np.atleast_2d(np.diff(np.array(X), axis=0)),
-                            np.atleast_2d(np.diff(np.array(G), axis=0)),
+                            np.atleast_2d(np.diff(_asnumpy(X), axis=0)),
+                            np.atleast_2d(np.diff(_asnumpy(G), axis=0)),
                         ),
                     ),
                 ):
@@ -651,6 +681,7 @@ def minimize_lbfgsb(
         istate.warnflag = 1
 
     # error: b'ERROR: STPMAX .LT. STPMIN'
+
     return OptimizeResult(
         fun=f0,
         jac=grad,
@@ -662,8 +693,8 @@ def minimize_lbfgsb(
         x=x,
         success=istate.is_success,
         hess_inv=LbfgsInvHessProduct(
-            np.atleast_2d(np.diff(np.array(X), axis=0)),
-            np.atleast_2d(np.diff(np.array(G), axis=0)),
+            np.atleast_2d(np.diff(_asnumpy(X), axis=0)),
+            np.atleast_2d(np.diff(_asnumpy(G), axis=0)),
         ),
     )
 

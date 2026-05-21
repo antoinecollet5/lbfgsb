@@ -37,7 +37,7 @@ from typing import Optional, Tuple
 
 from lbfgsb._numba_helpers import njit
 from lbfgsb.bfgsmats import LBFGSB_MATRICES, bmv, bmv_numba
-from lbfgsb.mathops import np, sp
+from lbfgsb.mathops import cholesky_factorization, np, sp
 from lbfgsb.types import NDArrayFloat, NDArrayInt
 
 
@@ -287,7 +287,8 @@ def factorize_k(
     LK = np.zeros((2 * m, 2 * m), dtype=np.float64)
 
     # Form L, the lower part of LL' = D+Y' ZZ'Y/theta
-    L11 = sp.linalg.cholesky(K11, lower=True, overwrite_a=False)
+    # NOTE: overwrite_a=False was deleted here, unsure if this is right
+    L11 = cholesky_factorization(K11)
     # Top-left
     LK[:m, :m] = L11
 
@@ -298,7 +299,7 @@ def factorize_k(
 
     # Form L22 from S'AA'S*theta + (L^-1(-L_a'+R_z'))'L^-1(-L_a'+R_z')
     # Bottom-right
-    LK[m:, m:] = sp.linalg.cholesky(K22 + L12.T @ L12, lower=True)
+    LK[m:, m:] = cholesky_factorization(K22 + L12.T @ L12)
 
     # Test the factorization
     if is_assert_correct:

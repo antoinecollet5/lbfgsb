@@ -37,12 +37,12 @@ from scipy.optimize import minimize
 # =======================================================================
 
 # Number of trials for each benchmark run (use 5 for stable results)
-NTRIALS = 5
+NTRIALS = 1
 
 # Problem sizes (dimensions) to test
 # For CuPy: use powers of 2 for optimal GPU memory alignment
 # For NumPy: use various sizes to capture performance characteristics
-problem_sizes = [2**i for i in range(14, 21)]  # 2 to 4096
+problem_sizes = [2**i for i in range(8, 10)]  # 2 to 4096
 
 # Function definitions for benchmarking
 BENCHMARK_FUNCTIONS = {
@@ -169,14 +169,6 @@ def benchmark_lbfgsb(backend_name=None, force_numpy=False):
     # Track backend being used
     actual_backend = np.__name__
 
-    # Prepare figure for plotting
-    fig, axes = plt.subplots(
-        1,
-        1,
-        figsize=(5, 5),
-        constrained_layout=True,
-    )
-
     print("\n" + "=" * 70)
     print(f"{actual_backend.upper()} Backend Benchmark")
     print("=" * 70)
@@ -269,8 +261,6 @@ def benchmark_lbfgsb(backend_name=None, force_numpy=False):
 
         times_lbfgsb.append(numpy.mean(times_lbfgsb_trial))
         times_scipy.append(numpy.mean(times_scipy_trial))
-        errors_lbfgsb.append(numpy.std(times_lbfgsb_trial))
-        errors_scipy.append(numpy.std(times_scipy_trial))
 
     print("\n" + "=" * 70)
     print(f"{actual_backend.upper()} Benchmark Complete")
@@ -283,74 +273,6 @@ def benchmark_lbfgsb(backend_name=None, force_numpy=False):
     # ========================================================================
     # Plotting Results
     # ========================================================================
-
-    # Check if we have valid data to plot
-    has_valid_data = all(t is not None and t > 0 for t in times_lbfgsb[-5:])
-
-    if has_valid_data:
-        # Plot
-        axes.errorbar(
-            problem_sizes,
-            times_lbfgsb,
-            yerr=errors_lbfgsb,
-            fmt="-o",
-            label="L-BFGS-B",
-            capsize=5,
-            ecolor="black",
-            color="blue" if actual_backend == "cupy" else "green",
-            linewidth=2,
-        )
-        axes.errorbar(
-            problem_sizes,
-            times_scipy,
-            yerr=errors_scipy,
-            fmt="-s",
-            label="SciPy L-BFGS-B",
-            capsize=5,
-            ecolor="black",
-            color="red",
-            linewidth=2,
-        )
-        axes.set_xscale("log")
-        axes.set_yscale("log")
-        axes.set_xlabel("Problem size (dimensions)", fontsize=12)
-        axes.set_ylabel("Time (s) - mean ± std (log scale)", fontsize=12)
-        axes.set_title(
-            f"{actual_backend.capitalize()} Backend: L-BFGS-B vs SciPy",
-            fontsize=14,
-            fontweight="bold",
-        )
-        axes.legend(loc="best", fontsize=10)
-        axes.grid(True, which="both", linestyle="--", alpha=0.7)
-
-        # Calculate speedup ratio
-        if len(times_lbfgsb) > 0:
-            speedup = np.array(times_scipy) / np.array(times_lbfgsb)
-            if hasattr(speedup, "get"):
-                speedup = speedup.get()
-            axes.text(
-                0.05,
-                0.95,
-                f"Mean Speedup:\n{speedup[-1]:.2f}x",
-                transform=axes.transAxes,
-                bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
-                fontsize=10,
-            )
-
-        plt.suptitle(
-            f"L-BFGS-B Benchmark: {actual_backend.upper()} Backend",
-            fontsize=16,
-            fontweight="bold",
-            y=1.02,
-        )
-
-        # Save plot
-        plt.savefig(
-            f"benchmark_comparison_{actual_backend}.png", dpi=300, bbox_inches="tight"
-        )
-        print(f"\nResults saved to 'benchmark_comparison_{actual_backend}.png'")
-    else:
-        print("\nSkipping plots due to invalid data")
 
     return {
         "times": times_lbfgsb,
