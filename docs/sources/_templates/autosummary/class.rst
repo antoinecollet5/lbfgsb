@@ -9,13 +9,41 @@
 .. currentmodule:: {{ module }}
 
 .. autoclass:: {{ objname }}
-   :members:
-   :private-members:
-   :show-inheritance:
-   :inherited-members:
 
    {% block methods %}
    .. automethod:: __init__
    {% endblock %}
 
-   .. rubric:: {{ _('Methods definition') }}
+   {% if attributes %}
+   .. rubric:: {{ _('Properties') }}
+
+   .. autosummary::
+      :nosignatures:
+      :toctree: generated
+
+      {% for item in attributes if not item.startswith('_') %}
+      ~{{ objname }}.{{ item }}
+      {% endfor %}
+   {% endif %}
+
+   {% if methods %}
+   .. rubric:: {{ _('Methods') }}
+
+   .. autosummary::
+      :nosignatures:
+      :toctree: generated
+
+      {% for item in methods if not item.startswith('_') %}
+      ~{{ objname }}.{{ item }}
+      {% endfor %}
+   {% endif %}
+
+   {% if examples %}
+   .. rubric:: {{ _('Examples') }}
+
+   .. code-block:: python
+
+      {% for line in examples %}
+      {{ line }}
+      {% endfor %}
+   {% endif %}

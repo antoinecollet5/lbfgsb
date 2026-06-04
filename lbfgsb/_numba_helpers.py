@@ -18,13 +18,13 @@ try:
 except (ImportError, ModuleNotFoundError):  # pragma: no cover
     NUMBA_AVAILABLE = False
 
-    def njit(*args, **kwargs):  # type: ignore
+    def njit(*args, **kwargs):
         def wrapper(func: F) -> F:
             return func
 
         return wrapper
 
-    def prange(*args, **kwargs):  # type: ignore
+    def prange(*args, **kwargs):
         return range(*args, **kwargs)
 
 

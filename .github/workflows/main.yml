@@ -44,6 +44,8 @@ jobs:
 
   tests-legacy:
     runs-on: ubuntu-22.04
+    needs:
+      - static_analysis
     strategy:
       matrix:
         python-version: ["3.7"]
@@ -81,6 +83,8 @@ jobs:
 
   tests:
     runs-on: ubuntu-22.04
+    needs:
+      - static_analysis
     strategy:
       fail-fast: false
       matrix:
@@ -101,11 +105,6 @@ jobs:
           pip install uv
           uv venv
           uv pip install -e .[all]
-
-      - name: Debug pytest plugins
-        run: |
-          uv run pytest --trace-config | grep cov || true
-
 
       - name: Run tests with coverage
         env:

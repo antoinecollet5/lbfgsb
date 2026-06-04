@@ -86,9 +86,7 @@ def get_freev(
 
     # Array of free variable and active variable indices (from 0 to n-1)
     free_vars: NDArrayInt = ((x_cp != ub) & (x_cp != lb)).nonzero()[0]
-    active_vars: NDArrayInt = (
-        ~np.isin(np.arange(n), free_vars)  # type: ignore
-    ).nonzero()[0]
+    active_vars: NDArrayInt = (~np.isin(np.arange(n), free_vars)).nonzero()[0]
 
     # Some display
     # 1) Indicate which variable is leaving the free variables and which is
