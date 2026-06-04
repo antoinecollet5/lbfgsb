@@ -1,7 +1,9 @@
-import numpy as np
-from lbfgsb.types import NDArrayFloat  # for type hints, numpy array of floats
 from typing import Tuple
+
+import numpy as np
 from lbfgsb import minimize_lbfgsb
+from lbfgsb.types import NDArrayFloat  # for type hints, numpy array of floats
+
 
 def rosenbrock(x: NDArrayFloat) -> float:
     """
@@ -51,7 +53,8 @@ def rosenbrock_grad(x: NDArrayFloat) -> NDArrayFloat:
     g[:-1] += 2.0 * (x[:-1] - 1.0)
     return g
 
-class FunGradWrapper():
+
+class FunGradWrapper:
     """Wrapper to transform fun_grad in ``fun`` and ``grad``."""
 
     def __init__(self, x0: NDArrayFloat) -> None:
@@ -78,6 +81,7 @@ class FunGradWrapper():
     def fun_grad(x: NDArrayFloat) -> Tuple[float, NDArrayFloat]:
         return rosenbrock(x), rosenbrock_grad(x)
 
+
 lb = np.array([-2, -2])  # lower bounds
 ub = np.array([2, 2])  # upper bounds
 bounds = np.array((lb, ub)).T  # The number of variables to optimize is len(bounds)
@@ -86,6 +90,6 @@ x0 = np.array([-0.8, -1])  # The initial guess
 wrapper = FunGradWrapper(x0)
 
 res = minimize_lbfgsb(
-  x0=x0, fun=wrapper.fun, jac=wrapper.grad, bounds=bounds, ftol=1e-5, gtol=1e-5
+    x0=x0, fun=wrapper.fun, jac=wrapper.grad, bounds=bounds, ftol=1e-5, gtol=1e-5
 )
 print(res)
