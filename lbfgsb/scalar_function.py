@@ -95,11 +95,11 @@ class ScalarFunction:
         self.g_updated: bool = False
         self.H_updated: bool = False
 
-        self.f: float = np.inf
+        self.f = np.inf
         self.g: NDArrayFloat
 
         self._lowest_x: NDArrayFloat = self.x
-        self._lowest_f: float = np.inf
+        self._lowest_f = np.inf
 
         finite_diff_options = {}
         if grad in FD_METHODS:
@@ -109,25 +109,25 @@ class ScalarFunction:
             finite_diff_options["bounds"] = finite_diff_bounds
 
         # Function evaluation
-        def fun_wrapped(x) -> float:
+        def fun_wrapped(x):
             self.nfev += 1
             # Send a copy because the user may overwrite it.
             # Overwriting results in undefined behaviour because
             # fun(self.x) will change self.x, with the two no longer linked.
-            fx: float = fun(np.copy(x))
+            fx = fun(np.copy(x))
             # Make sure the function returns a true scalar
             if not np.isscalar(fx):
                 try:
-                    fx = np.asarray(fx, dtype=np.float64).item()
+                    fx = fx
                 except (TypeError, ValueError) as e:
                     raise ValueError(
                         "The user-provided objective function "
                         "must return a scalar value."
                     ) from e
 
-            if fx < self._lowest_f:
+            if fx < self._lowest_f:  # ty:ignore[unsupported-operator]
                 self._lowest_x = x
-                self._lowest_f = fx
+                self._lowest_f = fx  # ty:ignore[invalid-assignment]
 
             return fx
 
@@ -181,13 +181,13 @@ class ScalarFunction:
         self._update_fun()
         return self.f
 
-    def grad(self, x):
+    def grad(self, x) -> NDArrayFloat:
         if not np.array_equal(x, self.x):
             self.update_x(x)
         self._update_grad()
         return self.g
 
-    def fun_and_grad(self, x):
+    def fun_and_grad(self, x) -> Tuple[float, NDArrayFloat]:
         if not np.array_equal(x, self.x):
             self.update_x(x)
         self._update_fun()

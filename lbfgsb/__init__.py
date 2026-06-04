@@ -94,6 +94,7 @@ References
 """
 
 # Make scooby a soft dependency:
+
 try:
     from scooby import Report as ScoobyReport
 except ImportError:
@@ -133,7 +134,7 @@ from lbfgsb.main import InternalState, minimize_lbfgsb
 from lbfgsb.utils import extract_hess_inv_diag, get_grad_projection_inf_norm
 
 
-class Report(ScoobyReport):
+class Report(ScoobyReport):  # ty: ignore warning[unsupported-base
     def __init__(self, additional=None, ncol=3, text_width=80, sort=False):
         """Initiate a scooby.Report instance."""
 
