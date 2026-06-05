@@ -93,3 +93,59 @@ res = minimize_lbfgsb(
     x0=x0, fun=wrapper.fun, jac=wrapper.grad, bounds=bounds, ftol=1e-5, gtol=1e-5
 )
 print(res)
+
+
+def objective(x):
+    return x[0] ** 2 + x[1] ** 2
+
+
+def gradient(x):
+    return np.array([2 * x[0], 2 * x[1]])
+
+
+x0 = np.array([10.0, 10.0])
+
+res = minimize_lbfgsb(
+    x0=x0,
+    fun=objective,
+    jac=gradient,
+)
+
+print(res.x)
+print(res.fun)
+
+
+def objective(x):
+    return x[0] ** 2 + x[1] ** 2
+
+
+x0 = np.array([10.0, 10.0])
+bounds = [(0.0, None), (0.0, None)]
+
+res = minimize_lbfgsb(
+    x0=x0,
+    fun=objective,
+    jac="2-point",
+    bounds=np.array(bounds),
+)
+
+np.testing.assert_allclose(res.x, [0.0, 0.0])
+assert res.fun == 0.0
+
+
+def objective_and_gradient(x):
+    f = x[0] ** 2 + x[1] ** 2
+    g = np.array([2 * x[0], 2 * x[1]])
+    return f, g
+
+
+x0 = np.array([10.0, 10.0])
+
+res = minimize_lbfgsb(
+    x0=x0,
+    fun=objective_and_gradient,
+    jac=True,
+)
+
+np.testing.assert_allclose(res.x, [0.0, 0.0])
+assert res.fun == 0.0
