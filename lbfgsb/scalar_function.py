@@ -118,7 +118,7 @@ class ScalarFunction:
             # Make sure the function returns a true scalar
             if not np.isscalar(fx):
                 try:
-                    fx = fx
+                    fx = float(fx)
                 except (TypeError, ValueError) as e:
                     raise ValueError(
                         "The user-provided objective function "
