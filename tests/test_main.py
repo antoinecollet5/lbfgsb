@@ -548,3 +548,37 @@ def test_user_callback(is_use_numba_jit: bool) -> None:
     )
 
     assert res.nfev == 7
+
+
+def test_obj_and_jac():
+    def objective(x):
+        return x[0] ** 2 + x[1] ** 2
+
+    x0 = np.array([10.0, 10.0])
+    bounds = [(0.0, None), (0.0, None)]
+
+    res = minimize_lbfgsb(
+        x0=x0,
+        fun=objective,
+        jac="2-point",
+        bounds=np.array(bounds),
+    )
+
+    np.testing.assert_allclose(res.x, [0.0, 0.0], atol=1e-6)
+    np.testing.assert_allclose(res.fun, 0.0, atol=1e-10)
+
+    def objective_and_gradient(x):
+        f = x[0] ** 2 + x[1] ** 2
+        g = np.array([2 * x[0], 2 * x[1]])
+        return f, g
+
+    x0 = np.array([10.0, 10.0])
+
+    res = minimize_lbfgsb(
+        x0=x0,
+        fun=objective_and_gradient,
+        jac=True,
+    )
+
+    np.testing.assert_allclose(res.x, [0.0, 0.0], atol=1e-6)
+    np.testing.assert_allclose(res.fun, 0.0, atol=1e-10)

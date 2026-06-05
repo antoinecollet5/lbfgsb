@@ -50,7 +50,6 @@ from scipy.optimize import (
     LbfgsInvHessProduct,  # noqa : F401
     OptimizeResult,
 )
-from typing_extensions import Literal  # for compatibility with python 3.7
 
 from lbfgsb._numba_helpers import NUMBA_AVAILABLE
 from lbfgsb.base import (
@@ -70,7 +69,13 @@ from lbfgsb.bfgsmats import (
 )
 from lbfgsb.cauchy import get_cauchy_point
 from lbfgsb.linesearch import line_search
-from lbfgsb.scalar_function import ScalarFunction, prepare_scalar_function
+from lbfgsb.scalar_function import (
+    JacOption,
+    Objective,
+    ObjectiveAndGradient,
+    ScalarFunction,
+    prepare_scalar_function,
+)
 from lbfgsb.subspacemin import get_freev, subspace_minimization
 from lbfgsb.types import NDArrayFloat
 
@@ -90,18 +95,8 @@ class InternalState:
 def minimize_lbfgsb(
     *,
     x0: NDArrayFloat,
-    fun: Callable[[NDArrayFloat], float],
-    jac: Optional[
-        Union[
-            Callable[
-                [
-                    NDArrayFloat,
-                ],
-                NDArrayFloat,
-            ],
-            Literal["2-point", "3-point", "cs"],
-        ]
-    ] = None,
+    fun: Union[Objective, ObjectiveAndGradient],
+    jac: JacOption,
     update_fun_def: Optional[
         Callable[
             [
@@ -138,203 +133,445 @@ def minimize_lbfgsb(
     is_use_numba_jit: bool = True,
 ) -> OptimizeResult:
     r"""
-    Solves bound constrained optimization problems by using the compact formula
-    of the limited memory BFGS updates.
+    Minimize a scalar function of one or more variables using the L-BFGS-B algorithm.
 
-    fun :  Callable[[NDArrayFloat], Union[float, Tuple[float, NDArrayFloat]]],
-        The objective function to be minimized.
+    This routine solves bound-constrained optimization problems using a pure Python
+    implementation of the limited-memory Broyden-Fletcher-Goldfarb-Shanno algorithm
+    with bound constraints, commonly known as L-BFGS-B.
 
-            ``fun(x) -> float``
+    The problem solved is
 
-        where ``x`` is a 1-D array with shape (n,). Note that if additional arguments
-        are needed for the objective function, it is necessary to build a wrapper.
+    .. math::
+
+        \min_x f(x)
+
+    subject to
+
+    .. math::
+
+        l_i \leq x_i \leq u_i,\quad i = 1, \ldots, n.
+
+    The algorithm stores only a limited number of correction pairs to approximate the
+    inverse Hessian, making it suitable for large-scale problems.
+
+    Parameters
+    ----------
     x0 : ndarray, shape (n,)
-        Initial guess. Array of real elements of size (n,),
-        where ``n`` is the number of independent variables.
-    jac : {callable,  '2-point', '3-point', 'cs'}, optional
-        Method for computing the gradient vector.
-        If it is a callable, it should be a function that returns the gradient
-        vector:
+        Initial guess. The array contains the starting values of the ``n``
+        independent variables. If bounds are provided, ``x0`` is clipped to the
+        feasible box before the first evaluation.
 
-            ``jac(x) -> array_like, shape (n,)``
+    fun : callable
+        Objective function to minimize.
 
-        where ``x`` is an array with shape (n,).
-        Alternatively, the keywords  {'2-point', '3-point', 'cs'} can be used
-        to select a finite difference scheme for numerical estimation of the
-        gradient with a relative step size. These finite difference schemes
-        obey any specified `bounds`. If None or False, the gradient will be estimated
-        using 2-point finite difference estimation with an absolute step size.
-        The default is None.
-    update_fun_def: Optional[Callable]
-        Function to update the gradient sequence. This is an experimental feature to
-        allow changing the objective function definition on the fly. In the first place
-        this functionality is dedicated to regularized problems for which the
-        regularization weight is computed while optimizing the cost function. In order
-        to get a hessian matching the new definition of `fun`, the gradient sequence
-        must be updated.
+        If ``jac`` is ``None``, ``False``, a finite-difference scheme, or a callable,
+        ``fun`` must return only the scalar objective value:
 
-            ``update_fun_def(x, f0, f0_old, grad, x_deque, grad_deque)
-            -> f0, f0_old, grad, updated grad_deque``
-    bounds : sequence or `Bounds`, optional
-        Bounds on variables. There are two ways to specify the bounds:
+        .. code-block:: python
 
-            1. Instance of `Bounds` class.
-            2. Sequence of ``(min, max)`` pairs for each element in `x`. None
-               is used to specify no bound.
-    checkpoint: Optional[OptimizeResult]
-        OptimizeResult instance. This parameter allow to pass the output of a previous
-        `minimize_lbfgsb` run (a 'checkpoint') and restart the solver without losing
-        the sequence of adjusted values and associated gradients (hence the
-        approximation of the inverse Hessian). The last objective function and
-        associated gradient is also used. Of course the objective function definition
-        must remain the same between the two optimization rounds.
-        It can be useful if the optimization has been stopped too early,
-        if some stop criteria or other parameters must be changed (e.g., `maxcor`
-        or `ftol`) or if some scaling must be performed before starting L-BFGS-B. It
-        avoids recalculating some expensive objective functions and gradients.
-        This is a unique feature among L-BFGS-B implementations. The default is None.
+            fun(x) -> float
+
+        If ``jac`` is ``True``, ``fun`` must return both the objective value and the
+        gradient:
+
+        .. code-block:: python
+
+            fun(x) -> tuple[float, ndarray]
+
+        In all cases, ``x`` is a one-dimensional array with shape ``(n,)``. If
+        additional arguments are required by the objective function, use a closure,
+        ``functools.partial``, or another wrapper.
+
+    jac : {callable, bool, '2-point', '3-point', 'cs'}, optional
+        Method used to compute the gradient vector.
+
+        If ``jac`` is a callable, it must return the gradient vector:
+
+        .. code-block:: python
+
+            jac(x) -> ndarray, shape (n,)
+
+        If ``jac`` is ``True``, ``fun`` is assumed to return a pair ``(f, g)``, where
+        ``f`` is the scalar objective value and ``g`` is the gradient vector. This is
+        compatible with the convention used by :func:`scipy.optimize.minimize`.
+
+        If ``jac`` is one of ``'2-point'``, ``'3-point'``, or ``'cs'``, the gradient
+        is approximated numerically using the corresponding finite-difference scheme.
+        These finite-difference schemes obey the specified bounds.
+
+        If ``jac`` is ``None`` or ``False``, the gradient is approximated using
+        forward finite differences with absolute step size ``eps``.
+
+        Default is ``None``.
+
+    update_fun_def : callable, optional
+        Experimental callback used to update the objective-function definition during
+        optimization and to modify the stored gradient sequence accordingly.
+
+        This is primarily intended for problems where the objective function changes
+        during optimization, for example regularized problems where the regularization
+        weight is adapted on the fly. Since the L-BFGS approximation depends on past
+        gradient differences, the stored gradient sequence must be updated to remain
+        consistent with the new objective definition.
+
+        The callable must have signature:
+
+        .. code-block:: python
+
+            update_fun_def(
+                x,
+                f0,
+                f0_old,
+                grad,
+                x_deque,
+                grad_deque,
+            ) -> tuple[float, float, ndarray, deque[ndarray]]
+
+        where ``x`` is the current point, ``f0`` is the current objective value,
+        ``f0_old`` is the previous objective value, ``grad`` is the current gradient,
+        ``x_deque`` is the stored sequence of past iterates, and ``grad_deque`` is the
+        stored sequence of past gradients.
+
+    bounds : sequence or scipy.optimize.Bounds, optional
+        Bounds on the variables.
+
+        Bounds may be specified in one of two forms:
+
+        1. An instance of :class:`scipy.optimize.Bounds`.
+        2. A sequence of ``(min, max)`` pairs for each variable.
+
+        Use ``None`` for one side of a bound to indicate no bound in that direction.
+
+    checkpoint : scipy.optimize.OptimizeResult, optional
+        Previous optimization result used to restart the solver.
+
+        When provided, the solver restarts from the checkpoint without discarding the
+        stored L-BFGS correction pairs. The previous objective value, gradient, and
+        inverse-Hessian approximation are reused. The objective-function definition
+        must be unchanged between the original run and the restarted run.
+
+        This is useful when an optimization was stopped early, when stopping criteria
+        need to be modified, or when parameters such as ``maxcor`` or ``ftol`` need to
+        be changed between runs.
+
         .. versionadded:: 1.0
-    maxcor : int
-        The maximum number of variable metric corrections used to
-        define the limited memory matrix. (The limited memory BFGS
-        method does not store the full hessian but uses this many terms
-        in an approximation to it.)
-    ftarget: Optional[Union[float, Callable]] = None
-        Target objective function (stop criterion) .
-        The iteration stops when ``f^{k+1} <= fmin``.
-        If Callable, it is called only once after the first function and gradient
-        computation. This option is available so that the stop criteria could be
-        adatped based on the first objective function value, i.e.,
-        this is particularly useful if a scaling is applied. If None, the stop criterion
-        is ignored. The default is None.
-    ftol : float
-        Objective function minimum change (stop criterion). The iteration stops
-        when ``(f^k - f^{k+1})/max{|f^k|,|f^{k+1}|,1} <= ftol``.
-        In the original Fortran algorithm, this corresponds to `factr * epsmch`.
-        Typical values for `ftol` on a computer with 15 digits of accuracy in double
-        precision are as follows: `ftol` = 5e-3 for low accuracy; `ftol` = 5e-8
-        for moderate accuracy; `ftol` = 5e-14 for extremely high accuracy.
-        If `ftol` = 0, the test will stop the algorithm only if the objective function
-        remains unchanged after one iteration. The default is 1e-5.
-    gtol : Union[float, Callable]
-        Projected gradient mininmum value (stop criterion).
-        The iteration will stop when ``max{|proj g_i | i = 1, ..., n}
-        <= gtol`` where ``pg_i`` is the i-th component of the
-        projected gradient.
-        As for gtol, if Callable, it is called only once after the first function
-        and gradient computation. This option is available so that the stop criteria
-        could be adatped based on the first objective function value, i.e.,
-        this is particularly useful if a scaling is applied. The default is 1e-5.
-    eps : float or ndarray
-        If `jac is None` the absolute step size used for numerical
-        approximation of the jacobian via forward differences.
-    maxfun : int
-        Maximum number of function evaluations. Note that this function
-        may violate the limit because of evaluating gradients by numerical
-        differentiation.
-        Note that interruptions due to maxfun are postponed
-        until the completion of a minimization iteration, consequently it might
-        stop after maxfun has been reached.
-    maxiter : int
-        Maximum number of iterations.
-    callback : Optional[Callable[[NDArrayFloat, OptimizeResult], bool]]
-        Called after each iteration. It is a callable with
-        the signature:
 
-            ``callback(xk, OptimizeResult state) -> bool``
+    maxcor : int, optional
+        Maximum number of variable-metric corrections used to approximate the inverse
+        Hessian. The L-BFGS-B algorithm does not store the full Hessian matrix; it
+        stores at most ``maxcor`` correction pairs. Default is ``10``.
 
-        where ``xk`` is the current parameter vector. and ``state``
-        is an `OptimizeResult` object, with the same fields
-        as the ones from the return. If callback returns True
-        the algorithm execution is terminated.
+    ftarget : float or callable, optional
+        Target objective-function value.
+
+        The optimization stops when
+
+        .. math::
+
+            f^{k+1} \leq f_{\mathrm{target}}.
+
+        If ``ftarget`` is callable, it is called once after the first objective and
+        gradient evaluation. This makes it possible to define a target value based on
+        the initial objective value, for example when scaling is applied.
+
+        If ``None``, this stopping criterion is disabled. Default is ``None``.
+
+    ftol : float, optional
+        Relative objective-function decrease tolerance.
+
+        The optimization stops when
+
+        .. math::
+
+            \frac{f^k - f^{k+1}}
+                {\max(|f^k|, |f^{k+1}|, 1)}
+            \leq \mathrm{ftol}.
+
+        In the original Fortran implementation, this corresponds to
+        ``factr * epsmch``. Typical values are:
+
+        - ``5e-3`` for low accuracy,
+        - ``5e-8`` for moderate accuracy,
+        - ``5e-14`` for high accuracy.
+
+        If ``ftol`` is ``0``, the test stops only when the objective function remains
+        unchanged after one iteration. Default is ``1e-5``.
+
+    gtol : float or callable, optional
+        Projected-gradient tolerance.
+
+        The optimization stops when
+
+        .. math::
+
+            \max_i |\operatorname{proj} g_i| \leq \mathrm{gtol},
+
+        where ``proj g`` is the projected gradient. If ``gtol`` is callable, it is
+        called once after the first objective and gradient evaluation. This allows the
+        stopping tolerance to depend on the initial objective value. Default is
+        ``1e-5``.
+
+    eps : float, optional
+        Absolute step size used for forward finite-difference approximation of the
+        gradient when ``jac`` is ``None`` or ``False``. Default is ``1e-8``.
+
+    maxfun : int, optional
+        Maximum number of objective-function evaluations.
+
+        The limit may be exceeded when gradients are estimated by numerical
+        differentiation. Interruptions due to ``maxfun`` are postponed until the end
+        of the current minimization iteration. Default is ``15000``.
+
+    maxiter : int, optional
+        Maximum number of iterations. Default is ``50``.
+
+    callback : callable, optional
+        Callback called after each iteration.
+
+        The callable must have signature:
+
+        .. code-block:: python
+
+            callback(xk, state) -> bool
+
+        where ``xk`` is the current parameter vector and ``state`` is an
+        :class:`scipy.optimize.OptimizeResult` containing the current solver state.
+
+        If the callback returns ``True``, the optimization stops.
+
     maxls : int, optional
-        Maximum number of line search steps (per iteration). Default is 20.
-    finite_diff_rel_step : None or array_like, optional
-        If `jac in ['2-point', '3-point', 'cs']` the relative step size to
-        use for numerical approximation of the jacobian. The absolute step
-        size is computed as ``h = rel_step * sign(x) * max(1, abs(x))``,
-        possibly adjusted to fit into the bounds. For ``method='3-point'``
-        the sign of `h` is ignored. If None (default) then step is selected
-        automatically.
-    max_steplength: float
-        Maximum steplength allowed. The default is 1e8.
-    ftol_linesearch: float, optional
-        Specify a nonnegative tolerance for the sufficient decrease condition in
-        `minpack2.dcsrch <https://ftp.mcs.anl.gov/pub/MINPACK-2/csrch/dcsrch.f>`_
-        (used for the line search). This is :math:`c_1` in
-        the Armijo condition (or Goldstein, Goldstein-Armijo condition) where
-        :math:`\alpha_{k}` is the estimated step.
+        Maximum number of line-search steps per iteration. Default is ``20``.
+
+    finite_diff_rel_step : float, optional
+        Relative step size used for numerical gradient approximation when ``jac`` is
+        ``'2-point'``, ``'3-point'``, or ``'cs'``.
+
+        The absolute step size is computed as
 
         .. math::
 
-            f(\mathbf{x}_{k}+\alpha_{k}\mathbf{p}_{k})\leq
-            f(\mathbf{x}_{k})+c_{1}\alpha_{k}\mathbf{p}_{k}^{\mathrm{T}}
-            \nabla f(\mathbf{x}_{k})
+            h = \mathrm{rel\_step} \operatorname{sign}(x) \max(1, |x|),
 
-        Note that :math:`0 < c_1 < 1`. Usually :math:`c_1` is small, see the Wolfe
-        conditions in :cite:t:`nocedalNumericalOptimization1999`.
-        In the fortran implementation
-        algo 778, it is hardcoded to 1e-3. The default is 1e-4.
-    gtol_linesearch: float, optional
-        Specify a nonnegative tolerance for the curvature condition in
-        `minpack2.dcsrch <https://ftp.mcs.anl.gov/pub/MINPACK-2/csrch/dcsrch.f>`_
-        (used for the line search). This is :math:`c_2` in
-        the Armijo condition (or Goldstein, Goldstein-Armijo condition) where
-        :math:`\alpha_{k}` is the estimated step.
+        and is adjusted if necessary to respect the bounds. For ``jac='3-point'``,
+        the sign of ``h`` is ignored. If ``None``, the step size is selected
+        automatically. Default is ``None``.
+
+    max_steplength : float, optional
+        Maximum allowed step length during the line search. Default is ``1e8``.
+
+    ftol_linesearch : float, optional
+        Tolerance for the sufficient-decrease condition in the line search.
+
+        This is the Wolfe condition parameter :math:`c_1` in
 
         .. math::
 
-            \left|\mathbf{p}_{k}^{\mathrm {T}}\nabla f(\mathbf{x}_{k}+\alpha_{k}
-            \mathbf{p}_{k})\right|\leq c_{2}\left|\mathbf {p}_{k}^{\mathrm{T}}\nabla
-            f(\mathbf{x}_{k})\right|
+            f(x_k + \alpha_k p_k)
+            \leq
+            f(x_k) + c_1 \alpha_k p_k^\mathrm{T} \nabla f(x_k).
 
-        Note that :math:`0 < c_1 < c_2 < 1`. Usually, :math:`c_2` is
-        much larger than :math:`c_2`.
-        see :cite:t:`nocedalNumericalOptimization1999`. In the fortran implementation
-        algo 778, it is hardcoded to 0.9. The default is 0.9.
-    xtol_linesearch: float, optional
-        Specify a nonnegative relative tolerance for an acceptable step in the line
-        search procedure (see
-        `minpack2.dcsrch <https://ftp.mcs.anl.gov/pub/MINPACK-2/csrch/dcsrch.f>`_).
-        In the fortran implementation algo 778, it is hardcoded to 0.1.
-        The default is 0.1.
-        See :func:`line_search` parameters.
-    eps_SY: float
-        Parameter used for updating the L-BFGS matrices. The default is 2.2e-16.
+        Usually, :math:`c_1` is small and satisfies
+        :math:`0 < c_1 < 1`. In the original L-BFGS-B Fortran implementation, this
+        parameter is hard-coded to ``1e-3``. Default is ``1e-3``.
+
+    gtol_linesearch : float, optional
+        Tolerance for the curvature condition in the line search.
+
+        This is the Wolfe condition parameter :math:`c_2` in
+
+        .. math::
+
+            \left|
+            p_k^\mathrm{T} \nabla f(x_k + \alpha_k p_k)
+            \right|
+            \leq
+            c_2
+            \left|
+            p_k^\mathrm{T} \nabla f(x_k)
+            \right|.
+
+        The parameters should satisfy :math:`0 < c_1 < c_2 < 1`. Usually,
+        :math:`c_2` is much larger than :math:`c_1`. In the original L-BFGS-B
+        Fortran implementation, this parameter is hard-coded to ``0.9``. Default is
+        ``0.9``.
+
+    xtol_linesearch : float, optional
+        Relative tolerance for acceptable steps in the line-search procedure. In the
+        original L-BFGS-B Fortran implementation, this parameter is hard-coded to
+        ``0.1``. Default is ``0.1``.
+
+    eps_SY : float, optional
+        Numerical threshold used when updating the L-BFGS correction matrices.
+        Default is ``2.2e-16``.
+
     iprint : int, optional
-        Controls the frequency of output. ``iprint < 0`` means no output;
-        ``iprint = 0``    print only one line at the last iteration;
-        ``0 < iprint < 99`` print also f and ``|proj g|`` every iprint iterations;
-        ``iprint >= 99``   print details of every iteration except n-vectors;
-    logger: Optional[Logger], optional
-        :class:`logging.Logger` instance. If None, nothing is displayed, no matter the
-        value of `iprint`, by default None.
-    is_check_factorizations: bool
-        For development purposes only, leave to False. The default is False.
-    is_use_numba_jit: bool
-        Whether to use `numba` just-in-time compilation to speed-up the computation
-        intensive part of the algorithm. The expected speed-up is of the order
-        of 2-5 folds for large scale problems. If `numba` is not available,
-        a warning is raised and the algorithm falls back to a non jit version.
-        The default is True.
+        Verbosity level.
+
+        - ``iprint < 0``: no output.
+        - ``iprint == 0``: print only the final summary.
+        - ``0 < iprint < 99``: print objective value and projected-gradient norm
+        every ``iprint`` iterations.
+        - ``iprint >= 99``: print detailed information at every iteration, except
+        full vectors.
+
+        Default is ``-1``.
+
+    logger : logging.Logger, optional
+        Logger used for textual output. If ``None``, no output is emitted regardless
+        of ``iprint``. Default is ``None``.
+
+    is_check_factorizations : bool, optional
+        Whether to run additional consistency checks on matrix factorizations.
+        Intended for development and debugging only. Default is ``False``.
+
+    is_use_numba_jit : bool, optional
+        Whether to use ``numba`` just-in-time compilation for performance-critical
+        parts of the algorithm.
+
+        If ``True`` but ``numba`` is unavailable, a warning is raised and the solver
+        falls back to the pure Python implementation. The expected speed-up for large
+        problems is typically between two and five times. Default is ``True``.
+
         .. versionadded:: 1.0
 
     Returns
     -------
-    OptimizeResult
-        Wrapper for optimization results (from scipy).
+    scipy.optimize.OptimizeResult
+        Optimization result represented as an :class:`scipy.optimize.OptimizeResult`.
+
+        Important fields include:
+
+        ``x`` : ndarray
+            Final solution.
+        ``fun`` : float
+            Objective value at the final solution.
+        ``jac`` : ndarray
+            Gradient at the final solution.
+        ``nfev`` : int
+            Number of objective-function evaluations.
+        ``njev`` : int
+            Number of gradient evaluations.
+        ``nit`` : int
+            Number of iterations.
+        ``status`` : int
+            Solver status code.
+        ``message`` : str
+            Termination message.
+        ``success`` : bool
+            Whether the solver terminated successfully.
+        ``hess_inv`` : scipy.optimize.LbfgsInvHessProduct
+            Limited-memory inverse-Hessian approximation.
+
+    Raises
+    ------
+    ValueError
+        Raised when the provided checkpoint is inconsistent with ``x0`` or when
+        restored correction vectors have incompatible dimensions.
+
+    Notes
+    -----
+    This implementation is a Python reimplementation of the L-BFGS-B algorithm,
+    rather than a wrapper around the original Fortran code. It exposes several
+    parameters that are fixed in the historical implementation, including line-search
+    Wolfe-condition parameters.
+
+    The convention ``jac=True`` follows :func:`scipy.optimize.minimize`: in that
+    case, ``fun`` must return both the objective value and the gradient. For example:
+
+    .. code-block:: python
+
+        def fun(x):
+            f = x[0] ** 2 + x[1] ** 2
+            g = np.array([2 * x[0], 2 * x[1]])
+            return f, g
+
+        res = minimize_lbfgsb(x0=x0, fun=fun, jac=True)
+
+    If ``jac`` is ``None`` or ``False``, finite differences are used.
+
+    Examples
+    --------
+    Minimize a quadratic function with a separate gradient function:
+
+    .. code-block:: python
+
+        import numpy as np
+        from lbfgsb import minimize_lbfgsb
+
+        def objective(x):
+            return x[0] ** 2 + x[1] ** 2
+
+        def gradient(x):
+            return np.array([2 * x[0], 2 * x[1]])
+
+        x0 = np.array([10.0, 10.0])
+
+        res = minimize_lbfgsb(
+            x0=x0,
+            fun=objective,
+            jac=gradient,
+        )
+
+        print(res.x)
+        print(res.fun)
+
+    Use the SciPy-compatible ``jac=True`` convention:
+
+    .. code-block:: python
+
+        import numpy as np
+        from lbfgsb import minimize_lbfgsb
+
+        def objective_and_gradient(x):
+            f = x[0] ** 2 + x[1] ** 2
+            g = np.array([2 * x[0], 2 * x[1]])
+            return f, g
+
+        x0 = np.array([10.0, 10.0])
+
+        res = minimize_lbfgsb(
+            x0=x0,
+            fun=objective_and_gradient,
+            jac=True,
+        )
+
+        print(res.x)
+        print(res.fun)
+
+    Use finite differences with bounds:
+
+    .. code-block:: python
+
+        import numpy as np
+        from lbfgsb import minimize_lbfgsb
+
+        def objective(x):
+            return x[0] ** 2 + x[1] ** 2
+
+        x0 = np.array([10.0, 10.0])
+        bounds = [(0.0, None), (0.0, None)]
+
+        res = minimize_lbfgsb(
+            x0=x0,
+            fun=objective,
+            jac="2-point",
+            bounds=bounds,
+        )
 
     References
     ----------
-    * R. H. Byrd, P. Lu and J. Nocedal. A Limited Memory Algorithm for Bound
-      Constrained Optimization, (1995), SIAM Journal on Scientific and
-      Statistical Computing, 16, 5, pp. 1190-1208.
-    * C. Zhu, R. H. Byrd and J. Nocedal. L-BFGS-B: Algorithm 778: L-BFGS-B,
-      FORTRAN routines for large scale bound constrained optimization (1997),
-      ACM Transactions on Mathematical Software, 23, 4, pp. 550 - 560.
-    * J.L. Morales and J. Nocedal. L-BFGS-B: Remark on Algorithm 778: L-BFGS-B,
-      FORTRAN routines for large scale bound constrained optimization (2011),
-      ACM Transactions on Mathematical Software, 38, 1.
+    .. [1] R. H. Byrd, P. Lu and J. Nocedal. A Limited Memory Algorithm for Bound
+        Constrained Optimization. SIAM Journal on Scientific and Statistical
+        Computing, 16(5), pp. 1190-1208, 1995.
+
+    .. [2] C. Zhu, R. H. Byrd and J. Nocedal. L-BFGS-B: Algorithm 778:
+        L-BFGS-B, FORTRAN routines for large scale bound constrained
+        optimization. ACM Transactions on Mathematical Software, 23(4),
+        pp. 550-560, 1997.
+
+    .. [3] J. L. Morales and J. Nocedal. L-BFGS-B: Remark on Algorithm 778:
+        L-BFGS-B, FORTRAN routines for large scale bound constrained
+        optimization. ACM Transactions on Mathematical Software, 38(1), 2011.
     """
     if not NUMBA_AVAILABLE and is_use_numba_jit:
         warnings.warn(

@@ -1,166 +1,282 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright (c) 2025 Antoine COLLET
 
-from typing import Callable, Optional, Tuple, Union
+from __future__ import annotations
+
+from typing import Callable, Dict, Optional, Tuple, Union, cast
 
 import numpy as np
 from numpy.typing import ArrayLike
 from scipy.optimize._numdiff import approx_derivative
-from typing_extensions import Literal  # for compatibility with python 3.7
+from typing_extensions import Literal
 
 from lbfgsb.types import NDArrayFloat
 
-FD_METHODS = ("2-point", "3-point", "cs")
+FDMethod = Literal["2-point", "3-point", "cs"]
+FD_METHODS: Tuple[FDMethod, FDMethod, FDMethod] = ("2-point", "3-point", "cs")
+
+Scalar = Union[float, int, np.floating]
+ObjectiveValue = Union[Scalar, complex, np.complexfloating]
+Objective = Callable[[NDArrayFloat], ObjectiveValue]
+Gradient = Callable[[NDArrayFloat], NDArrayFloat]
+ObjectiveAndGradient = Callable[[NDArrayFloat], Tuple[Scalar, NDArrayFloat]]
+
+JacOption = Optional[Union[Gradient, bool, FDMethod]]
+GradOption = Union[Gradient, FDMethod]
+
+FiniteDiffBounds = Union[Tuple[ArrayLike, ArrayLike], Tuple[float, float]]
+
+
+def _as_real_float(value: object) -> float:
+    """Convert a scalar objective value to a Python float.
+
+    Complex values with a nonzero imaginary part are rejected.
+    """
+    arr = np.asarray(value)
+
+    if arr.ndim != 0:
+        raise ValueError(
+            "The user-provided objective function must return a scalar value."
+        )
+
+    item = arr.item()
+
+    if isinstance(item, complex):
+        if item.imag != 0.0:
+            raise ValueError(
+                "The user-provided objective function returned a complex value "
+                "with a nonzero imaginary part."
+            )
+        return float(item.real)
+
+    return float(item)
+
+
+def _as_scalar_for_numdiff(value: object) -> Union[float, complex]:
+    """Convert objective output to a scalar while preserving complex-step values."""
+    arr = np.asarray(value)
+
+    if arr.ndim != 0:
+        raise ValueError(
+            "The user-provided objective function must return a scalar value."
+        )
+
+    item = arr.item()
+
+    if isinstance(item, complex):
+        return complex(item)
+
+    return float(item)
+
+
+def _as_float_array(value: ArrayLike) -> NDArrayFloat:
+    """Convert an array-like gradient to a 1-D float ndarray."""
+    return np.atleast_1d(np.asarray(value, dtype=float))
+
+
+def _is_fd_method(value: object) -> bool:
+    """Return whether value is a supported finite-difference method."""
+    return isinstance(value, str) and value in FD_METHODS
+
+
+class MemoizedObjectiveAndGradient:
+    """Memoized adapter for callables returning ``(f, g)``.
+
+    This adapter allows a SciPy-like objective function
+
+    ``fun(x) -> (f, g)``
+
+    to be exposed as two separate callables:
+
+    ``fun(x) -> f`` and ``grad(x) -> g``.
+
+    The last evaluation is cached so that requesting ``fun(x)`` followed by
+    ``grad(x)`` at the same point does not evaluate the user function twice.
+    """
+
+    def __init__(self, fun: ObjectiveAndGradient) -> None:
+        self._fun = fun
+        self._x: Optional[NDArrayFloat] = None
+        self._f: Optional[float] = None
+        self._g: Optional[NDArrayFloat] = None
+
+    def _same_x(self, x: NDArrayFloat) -> bool:
+        return self._x is not None and np.array_equal(x, self._x)
+
+    def _evaluate(self, x: NDArrayFloat) -> None:
+        if self._same_x(x):
+            return
+
+        f_raw, g_raw = self._fun(np.copy(x))
+
+        self._x = np.copy(x)
+        self._f = _as_real_float(f_raw)
+        self._g = _as_float_array(g_raw)
+
+    def fun(self, x: NDArrayFloat) -> float:
+        self._evaluate(x)
+        if self._f is None:
+            raise RuntimeError("Objective cache was not initialized.")
+        return self._f
+
+    def grad(self, x: NDArrayFloat) -> NDArrayFloat:
+        self._evaluate(x)
+        if self._g is None:
+            raise RuntimeError("Gradient cache was not initialized.")
+        return self._g
 
 
 class ScalarFunction:
-    """Scalar function and its derivatives.
+    """Scalar function and its gradient.
 
-    This class defines a scalar function F: R^n->R and methods for
-    computing or approximating its first and second derivatives.
+    This class defines a scalar function ``F: R^n -> R`` and methods for
+    evaluating its value and gradient. The gradient can either be provided by
+    the user or approximated using finite differences.
 
     Parameters
     ----------
-    fun : Callable[[NDArrayFloat], float]
-        evaluates the scalar function. Must be of the form ``fun(x)``,
-        where ``x`` is the argument in the form of a 1-D array. Should return a scalar.
-    x0 : array-like
-        Provides an initial set of variables for evaluating fun. Array of real
-        elements of size (n,), where 'n' is the number of independent
-        variables.
-    grad : Union[Callable[[NDArrayFloat], NDArrayFloat], Literal['2-point',
-    '3-point', 'cs']]
-        Method for computing the gradient vector.
-        If it is a callable, it should be a function that returns the gradient
-        vector:
+    fun : callable
+        Objective function. Must have signature:
 
-            ``grad(x) -> array_like, shape (n,)``
+        .. code-block:: python
 
-        where ``x`` is an array with shape (n,).
-        Alternatively, the keywords  {'2-point', '3-point', 'cs'} can be used
-        to select a finite difference scheme for numerical estimation of the
-        gradient with a relative step size. These finite difference schemes
-        obey any specified `bounds`.
-    finite_diff_rel_step : None or array_like
-        Relative step size to use. The absolute step size is computed as
-        ``h = finite_diff_rel_step * sign(x0) * max(1, abs(x0))``, possibly
-        adjusted to fit into the bounds. For ``method='3-point'`` the sign
-        of `h` is ignored. If None then finite_diff_rel_step is selected
-        automatically,
-    finite_diff_bounds : tuple of array_like
-        Lower and upper bounds on independent variables. Defaults to no bounds,
-        (-np.inf, np.inf). Each bound must match the size of `x0` or be a
-        scalar, in the latter case the bound will be the same for all
-        variables. Use it to limit the range of function evaluation.
-    epsilon : None or array_like, optional
-        Absolute step size to use, possibly adjusted to fit into the bounds.
-        For ``method='3-point'`` the sign of `epsilon` is ignored. By default
-        relative steps are used, only if ``epsilon is not None`` are absolute
-        steps used.
+            fun(x) -> float
+
+        where ``x`` is a one-dimensional array with shape ``(n,)``.
+
+    x0 : ndarray, shape (n,)
+        Initial point.
+
+    grad : callable or {'2-point', '3-point', 'cs'}
+        Gradient evaluation method.
+
+        If callable, it must have signature:
+
+        .. code-block:: python
+
+            grad(x) -> ndarray, shape (n,)
+
+        If one of ``'2-point'``, ``'3-point'``, or ``'cs'``, the gradient is
+        approximated numerically using the corresponding finite-difference
+        scheme.
+
+    finite_diff_rel_step : array_like or None
+        Relative step size used for finite-difference gradient approximation.
+
+    finite_diff_bounds : tuple
+        Lower and upper bounds used by finite differences.
+
+    epsilon : array_like or None, optional
+        Absolute step size used for finite differences. If ``None``, relative
+        steps are used.
 
     Notes
     -----
-    This class implements a memoization logic. There are methods `fun`,
-    `grad`, and corresponding attributes `f`, `g`. The following
-    things should be considered:
-
-        1. Use only public methods `fun` and `grad`.
-        2. After one of the methods is called, the corresponding attribute
-           will be set. However, a subsequent call with a different argument
-           of *any* of the methods may overwrite the attribute.
+    This class implements memoization. Use the public methods ``fun``,
+    ``grad``, and ``fun_and_grad``. Calling one of these methods with a new
+    point invalidates cached values from the previous point.
     """
 
     def __init__(
         self,
-        fun: Callable[[NDArrayFloat], float],
+        fun: Objective,
         x0: NDArrayFloat,
-        grad: Union[
-            Callable[[NDArrayFloat], NDArrayFloat],
-            Literal["2-point", "3-point", "cs"],
-        ],
+        grad: GradOption,
         finite_diff_rel_step: Optional[ArrayLike],
-        finite_diff_bounds: Union[Tuple, NDArrayFloat],
+        finite_diff_bounds: FiniteDiffBounds,
         epsilon: Optional[ArrayLike] = None,
     ) -> None:
-        if not callable(grad) and grad not in FD_METHODS:
+        if not callable(grad) and not _is_fd_method(grad):
             raise ValueError(f"`grad` must be either callable or one of {FD_METHODS}.")
 
-        # the astype call ensures that self.x is a copy of x0
-        self.x: NDArrayFloat = np.atleast_1d(x0).astype(float)
+        # The astype call ensures that self.x is a copy of x0.
+        self.x: NDArrayFloat = np.atleast_1d(np.asarray(x0, dtype=float))
         self.n: int = self.x.size
+
         self.nfev: int = 0
         self.ngev: int = 0
         self.nhev: int = 0
+
         self.f_updated: bool = False
         self.g_updated: bool = False
         self.H_updated: bool = False
 
-        self.f = np.inf
-        self.g: NDArrayFloat
+        self.f: float = float("inf")
+        self.g: NDArrayFloat = np.zeros_like(self.x)
 
-        self._lowest_x: NDArrayFloat = self.x
-        self._lowest_f = np.inf
+        self._lowest_x: NDArrayFloat = np.copy(self.x)
+        self._lowest_f: float = float("inf")
 
-        finite_diff_options = {}
-        if grad in FD_METHODS:
+        finite_diff_options: Dict[str, object] = {}
+        if _is_fd_method(grad):
             finite_diff_options["method"] = grad
             finite_diff_options["rel_step"] = finite_diff_rel_step
             finite_diff_options["abs_step"] = epsilon
             finite_diff_options["bounds"] = finite_diff_bounds
 
-        # Function evaluation
-        def fun_wrapped(x):
+        def fun_wrapped(x: NDArrayFloat) -> float:
             self.nfev += 1
-            # Send a copy because the user may overwrite it.
-            # Overwriting results in undefined behaviour because
-            # fun(self.x) will change self.x, with the two no longer linked.
-            fx = fun(np.copy(x))
-            # Make sure the function returns a true scalar
-            if not np.isscalar(fx):
-                try:
-                    fx = float(fx)
-                except (TypeError, ValueError) as e:
-                    raise ValueError(
-                        "The user-provided objective function "
-                        "must return a scalar value."
-                    ) from e
 
-            if fx < self._lowest_f:  # ty:ignore[unsupported-operator]
-                self._lowest_x = x
-                self._lowest_f = fx  # ty:ignore[invalid-assignment]
+            fx_raw = fun(np.copy(x))
+
+            try:
+                fx = _as_real_float(fx_raw)
+            except (TypeError, ValueError) as e:
+                raise ValueError(
+                    "The user-provided objective function must return a scalar value."
+                ) from e
+
+            if fx < self._lowest_f:
+                self._lowest_x = np.copy(x)
+                self._lowest_f = fx
 
             return fx
+
+        def fun_wrapped_for_numdiff(x: NDArrayFloat) -> Union[float, complex]:
+            self.nfev += 1
+
+            fx_raw = fun(np.copy(x))
+
+            try:
+                return _as_scalar_for_numdiff(fx_raw)
+            except (TypeError, ValueError) as e:
+                raise ValueError(
+                    "The user-provided objective function must return a scalar value."
+                ) from e
 
         def update_fun() -> None:
             self.f = fun_wrapped(self.x)
 
-        self._update_fun_impl = update_fun
+        self._update_fun_impl: Callable[[], None] = update_fun
 
-        # Gradient evaluation
         if callable(grad):
+            grad_callable = grad
 
-            def grad_wrapped(x):
+            def grad_wrapped(x: NDArrayFloat) -> NDArrayFloat:
                 self.ngev += 1
-                return np.atleast_1d(grad(np.copy(x)))
+                return _as_float_array(grad_callable(np.copy(x)))
 
-            def update_grad():
+            def update_grad() -> None:
                 self.g = grad_wrapped(self.x)
 
-        elif grad in FD_METHODS:
+        else:
 
             def update_grad() -> None:
                 self._update_fun()
                 self.ngev += 1
-                self.g = approx_derivative(
-                    fun_wrapped, self.x, f0=self.f, **finite_diff_options
+                g = approx_derivative(
+                    fun_wrapped_for_numdiff,
+                    self.x,
+                    f0=self.f,
+                    **finite_diff_options,
                 )
+                self.g = _as_float_array(g)
 
-        self._update_grad_impl = update_grad
+        self._update_grad_impl: Callable[[], None] = update_grad
 
-    def update_x(self, x) -> None:
-        # ensure that self.x is a copy of x. Don't store a reference
-        # otherwise the memoization doesn't work properly.
-        self.x = np.atleast_1d(x).astype(float)
+    def update_x(self, x: NDArrayFloat) -> None:
+        """Update the current point and invalidate cached values."""
+        self.x = np.atleast_1d(np.asarray(x, dtype=float))
         self.f_updated = False
         self.g_updated = False
         self.H_updated = False
@@ -175,19 +291,22 @@ class ScalarFunction:
             self._update_grad_impl()
             self.g_updated = True
 
-    def fun(self, x) -> float:
+    def fun(self, x: NDArrayFloat) -> float:
+        """Return the objective value at ``x``."""
         if not np.array_equal(x, self.x):
             self.update_x(x)
         self._update_fun()
         return self.f
 
-    def grad(self, x) -> NDArrayFloat:
+    def grad(self, x: NDArrayFloat) -> NDArrayFloat:
+        """Return the gradient at ``x``."""
         if not np.array_equal(x, self.x):
             self.update_x(x)
         self._update_grad()
         return self.g
 
-    def fun_and_grad(self, x) -> Tuple[float, NDArrayFloat]:
+    def fun_and_grad(self, x: NDArrayFloat) -> Tuple[float, NDArrayFloat]:
+        """Return both the objective value and gradient at ``x``."""
         if not np.array_equal(x, self.x):
             self.update_x(x)
         self._update_fun()
@@ -196,91 +315,99 @@ class ScalarFunction:
 
 
 def prepare_scalar_function(
-    fun: Callable[[NDArrayFloat], float],
+    fun: Union[Objective, ObjectiveAndGradient],
     x0: NDArrayFloat,
-    jac: Optional[
-        Union[
-            Callable[
-                [
-                    NDArrayFloat,
-                ],
-                NDArrayFloat,
-            ],
-            Literal["2-point", "3-point", "cs"],
-        ]
-    ] = None,
-    bounds=None,
-    epsilon=None,
-    finite_diff_rel_step=None,
+    jac: JacOption = None,
+    bounds: Optional[FiniteDiffBounds] = None,
+    epsilon: Optional[ArrayLike] = None,
+    finite_diff_rel_step: Optional[ArrayLike] = None,
 ) -> ScalarFunction:
-    """
-    Creates a ScalarFunction object for use with scalar minimizers
-    (BFGS/LBFGSB/SLSQP/TNC/CG/etc).
+    """Create a :class:`ScalarFunction` for scalar minimizers.
 
     Parameters
     ----------
     fun : callable
-        The objective function to be minimized.
+        Objective function.
 
-            ``fun(x) -> float``
+        If ``jac`` is not ``True``, ``fun`` must return a scalar:
 
-        where ``x`` is an 1-D array with shape (n,).
+        .. code-block:: python
+
+            fun(x) -> float
+
+        If ``jac`` is ``True``, ``fun`` must return both the objective value and
+        the gradient:
+
+        .. code-block:: python
+
+            fun(x) -> tuple[float, ndarray]
+
     x0 : ndarray, shape (n,)
-        Initial guess. Array of real elements of size (n,),
-        where 'n' is the number of independent variables.
-    jac : {callable,  '2-point', '3-point', 'cs', None}, optional
-        Method for computing the gradient vector. If it is a callable, it
-        should be a function that returns the gradient vector:
+        Initial point.
 
-            ``jac(x) -> array_like, shape (n,)``
+    jac : callable, bool, {'2-point', '3-point', 'cs'} or None, optional
+        Gradient evaluation method.
 
-        If one of `{'2-point', '3-point', 'cs'}` is selected then the gradient
-        is calculated with a relative step for finite differences. If `None`,
-        then two-point finite differences with an absolute step is used.
-        If None or False, the gradient will be estimated
-        using 2-point finite difference estimation with an absolute step size.
-        The default is None.
-    bounds : sequence, optional
-        Bounds on variables. 'new-style' bounds are required.
-    eps : float or ndarray
-        If `jac is None` the absolute step size used for numerical
-        approximation of the jacobian via forward differences.
-    finite_diff_rel_step : None or array_like, optional
-        If `jac in ['2-point', '3-point', 'cs']` the relative step size to
-        use for numerical approximation of the jacobian. The absolute step
-        size is computed as ``h = rel_step * sign(x0) * max(1, abs(x0))``,
-        possibly adjusted to fit into the bounds. For ``method='3-point'``
-        the sign of `h` is ignored. If None (default) then step is selected
-        automatically.
+        If callable, ``jac`` must return the gradient vector.
+
+        If ``jac=True``, ``fun`` is assumed to return ``(f, g)``.
+
+        If ``jac`` is one of ``'2-point'``, ``'3-point'``, or ``'cs'``, the
+        gradient is approximated using the selected finite-difference method.
+
+        If ``jac`` is ``None`` or ``False``, two-point finite differences with
+        absolute step size ``epsilon`` are used.
+
+    bounds : tuple, optional
+        Lower and upper bounds used for finite differences. If ``None``, no
+        bounds are used.
+
+    epsilon : array_like or None, optional
+        Absolute finite-difference step size.
+
+    finite_diff_rel_step : array_like or None, optional
+        Relative finite-difference step size.
 
     Returns
     -------
-    sf : ScalarFunction
+    ScalarFunction
+        Wrapped scalar function with memoized objective and gradient evaluations.
     """
-    if callable(jac):
-        grad = jac
-    elif jac in FD_METHODS:
-        # epsilon is set to None so that ScalarFunction is made to use
-        # rel_step
-        epsilon = None
-        grad = jac
-    elif jac is None:
-        # default (jac is None) is to do 2-point finite differences with
-        # absolute step size. ScalarFunction has to be provided an
-        # epsilon value that is not None to use absolute steps. This is
-        # normally the case from most _minimize* methods.
+    scalar_fun: Objective
+    grad: GradOption
+
+    if jac is True:
+        memoized = MemoizedObjectiveAndGradient(cast(ObjectiveAndGradient, fun))
+        scalar_fun = memoized.fun
+        grad = memoized.grad
+
+    elif jac is False or jac is None:
+        scalar_fun = cast(Objective, fun)
         grad = "2-point"
-        epsilon = epsilon
+
+    elif callable(jac):
+        scalar_fun = cast(Objective, fun)
+        grad = jac
+
+    elif _is_fd_method(jac):
+        scalar_fun = cast(Objective, fun)
+        grad = jac
+        # Explicit finite-difference methods use relative steps.
+        epsilon = None
+
     else:
         raise ValueError(
-            "jac must be callable, None or among ['2-point', '3-point', 'cs']."
+            "jac must be callable, bool, None, or one of ['2-point', '3-point', 'cs']."
         )
 
     if bounds is None:
         bounds = (-np.inf, np.inf)
 
-    # ScalarFunction caches. Reuse of fun(x) during grad
-    # calculation reduces overall function evaluations.
-    sf = ScalarFunction(fun, x0, grad, finite_diff_rel_step, bounds, epsilon=epsilon)
-
-    return sf
+    return ScalarFunction(
+        scalar_fun,
+        x0,
+        grad,
+        finite_diff_rel_step,
+        bounds,
+        epsilon=epsilon,
+    )

@@ -55,7 +55,8 @@ def test_ScalarFunction(grad, exception) -> None:
             pytest.raises(
                 ValueError,
                 match=(
-                    "jac must be callable, None or among ['2-point', '3-point', 'cs']."
+                    "jac must be callable, bool, None, or one of"
+                    " ['2-point', '3-point', 'cs']."
                 ),
             ),
         ),
