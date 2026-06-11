@@ -307,7 +307,7 @@ def update_lbfgs_matrices(
         # sk = X[-1] - X[-2]
         sTy = sk @ yk
         yTy = yk @ yk
-        mats.theta = yTy / sTy
+        mats.theta = (yTy / sTy).item()
 
         m = len(X) - 1
         n = np.size(X[-1])

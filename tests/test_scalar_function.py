@@ -39,7 +39,7 @@ from lbfgsb.scalar_function import FD_METHODS, ScalarFunction, prepare_scalar_fu
 )
 def test_ScalarFunction(grad, exception) -> None:
     with exception:
-        ScalarFunction(rosenbrock, np.array([0.0, 5.0]), grad, 0.1, 0.1, 0.1)
+        ScalarFunction(rosenbrock, np.array([0.0, 5.0]), grad, 0.1, 0.1, 0.1)  # ty:ignore[invalid-argument-type]
 
 
 @pytest.mark.parametrize(
@@ -55,7 +55,8 @@ def test_ScalarFunction(grad, exception) -> None:
             pytest.raises(
                 ValueError,
                 match=(
-                    "jac must be callable, None or among ['2-point', '3-point', 'cs']."
+                    "jac must be callable, bool, None, or one of"
+                    " ['2-point', '3-point', 'cs']."
                 ),
             ),
         ),

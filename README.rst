@@ -4,14 +4,16 @@ LBFGSB
 
 |License| |Stars| |Python| |PyPI| |Downloads| |Build Status| |Documentation Status| |Coverage| |Codacy| |Precommit: enabled| |Ruff| |ty| |DOI|
 
-🐍 A python impementation of the famous L-BFGS-B quasi-Newton solver [1].
+🐍 A Python implementation of the famous L-BFGS-B quasi-Newton solver [1].
 
-This code is a python port of the famous implementation of Limited-memory
-Broyden-Fletcher-Goldfarb-Shanno (L-BFGS), algorithm 778 written in Fortran [2,3]
-(last update in 2011).
-Note that this is not a wrapper like `minimize`` in `Scipy <https://docs.scipy.org/doc/scipy/reference/optimize.minimize-lbfgsb.html>`_ but a complete
-reimplementation (pure python).
+This package is a Python port of the famous Limited-memory
+Broyden-Fletcher-Goldfarb-Shanno algorithm with bound constraints, L-BFGS-B,
+known as Algorithm 778 and originally written in Fortran [2,3] (last update in 2011).
+
 The original Fortran code can be found here: https://dl.acm.org/doi/10.1145/279232.279236
+
+It is a complete Python reimplementation, relying on NumPy, SciPy utilities,
+and optional Numba acceleration for performance-critical parts.
 
 **The complete and up to date documentation can be found here**: https://lbfgsb.readthedocs.io.
 
@@ -28,17 +30,27 @@ Incidentally, the only other python implementation we know of to date,
 by `Avieira <https://github.com/avieira/python_lbfgsb>`_, is not very optimized and under GPL3 license,
 which makes it tricky to use.
 
-In this context, the objectives of this code are as follows:
+In this context, the objectives of this package are:
 
-- Learn the underlying mechanisms of lbfgsb code;
-- Provide understandable, modern code using the high-level language python, while using typing, explicit function names and standardized formatting thanks to `Ruff <https://docs.astral.sh/ruff/>`_ and `ty <https://docs.astral.sh/ty/>`_;
-- Provide detailed and explicit documentation;
-- Offer totally free code, including for commercial use, thanks to the **BSD 3-Clause License**;
-- Garantee efficient code, with the number of calls to the objective function and gradient at least as low as in the reference implementation, and without drastically increasing memory consumption or computation time, thanks to the use of numpy and vectorization;
-- Add relevant stopping criteria;
-- Add the possibility to restart the solver from a checkpoint;
-- Add the possibility of modifying on-the-fly the gradient sequences stored in memory, an essential mechanism for the automatic and adaptive weighting of a possible regularization term, See (TODO). This is one of the initial motivation;
-- Use a logging system rather than `prints`, for better integration within complex apps.
+- Explain and expose the underlying mechanisms of the L-BFGS-B algorithm.
+- Provide understandable, modern Python code with explicit function names,
+  standardized formatting, and static typing support through tools such as
+  `Ruff <https://docs.astral.sh/ruff/>`_ and
+  `ty <https://docs.astral.sh/ty/>`_.
+- Provide detailed and explicit documentation.
+- Offer permissively licensed code, including for commercial use, thanks to the
+  **BSD 3-Clause License**.
+- Keep the number of objective-function and gradient evaluations competitive
+  with the reference implementation.
+- Maintain reasonable memory usage and runtime through NumPy vectorization and
+  optional Numba acceleration.
+- Add practical stopping criteria.
+- Support checkpointing and solver restarts.
+- Support on-the-fly updates of the stored gradient sequence, useful for
+  adaptive objective functions such as dynamically weighted regularized
+  problems.
+- Use logging rather than ``print`` statements for better integration in larger
+  applications.
 
 ===============
 🚀 Quick start
@@ -166,7 +178,6 @@ wrappers if needed.
         Return a float and takes args and kwargs.
         """
         return my_cost_function(x, 10, 239.9, kwargs1=1, kwargs2="blabla2")
-
 
 See all use cases in the tutorials section of the `documentation <https://lbfgsb.readthedocs.io/en/latest/usage.html>`_.
 
@@ -409,6 +420,31 @@ Hessian matching the new definition of `fun`, the gradient sequence must be upda
     -> f0, f0_old, grad, updated grad_deque``
 
 🏗️ Complete example with supporting paper coming Q1 2026.
+
+
+=======================
+✨ What's new in 1.1.0
+=======================
+
+Version ``1.1.0`` adds SciPy-compatible support for ``jac=True``. The objective
+function may now return both the scalar objective value and its gradient:
+
+.. code-block:: python
+
+    def objective_and_gradient(x):
+        f = x[0] ** 2 + x[1] ** 2
+        g = np.array([2.0 * x[0], 2.0 * x[1]])
+        return f, g
+
+    res = minimize_lbfgsb(
+        x0=np.array([10.0, 10.0]),
+        fun=objective_and_gradient,
+        jac=True,
+    )
+
+This release also improves static typing support, including compatibility with
+``ty``, and makes the line-search and scalar-function wrappers more robust in
+numerically degenerate cases.
 
 ===========
 🔑 License
