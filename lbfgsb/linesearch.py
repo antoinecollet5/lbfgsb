@@ -37,12 +37,13 @@ import logging
 import warnings
 from typing import Optional
 
-import numpy as np
-import scipy as sp
+import numpy as tnp
 from packaging.version import Version
 from scipy import __version__ as spversion
+from scipy.optimize import _dcsrch
 
 from lbfgsb._numba_helpers import njit
+from lbfgsb.mathops import errorstate, np, sp
 from lbfgsb.scalar_function import ScalarFunction
 from lbfgsb.types import NDArrayFloat
 
@@ -472,19 +473,14 @@ def line_search(
     best_stp: Optional[float] = None
 
     if not is_use_minpack2:
-        # There is an issue in DCSRCH.__call__: it can return steplength=None
-        # when task is a warning, while this should not necessarily happen,
-        # for example when steplength reaches max_steplength. Therefore, keep
-        # the explicit iteration loop.
-        dcsrch = sp.optimize._dcsrch.DCSRCH(
-            phi,
-            dphi,
-            ftol,
-            gtol,
-            xtol,
-            0.0,
-            max_steplength,
-        )
+        # careful, there is an issue in the DCSRRCH.__call__ function. It returns
+        # steplength = None when task is a warning while it should not be the case
+        # for instance when steplength = max_steplength
+        # So we must implement a while loop again.
+        # steplength, f0, _, task = dcsrch(
+        #     steplength_0, phi0=f0, derphi0=dphi0, maxiter=max_iter
+        # )
+        dcsrch = _dcsrch.DCSRCH(phi, dphi, ftol, gtol, xtol, 0.0, max_steplength)
 
     while _iter < max_iter:
         if is_use_minpack2:

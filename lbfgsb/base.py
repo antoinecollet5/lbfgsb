@@ -24,9 +24,9 @@ Functions
 import logging
 from typing import Optional, Sequence, Tuple
 
-import numpy as np
 from numpy.typing import ArrayLike
 
+from lbfgsb.mathops import np
 from lbfgsb.types import NDArrayFloat
 
 

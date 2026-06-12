@@ -6,7 +6,6 @@ from collections import deque
 from contextlib import nullcontext as does_not_raise
 from typing import Deque, Tuple
 
-import numpy as np
 import pytest
 from lbfgsb.bfgsmats import (
     LBFGSB_MATRICES,
@@ -16,6 +15,7 @@ from lbfgsb.bfgsmats import (
     make_X_and_G_respect_strong_wolfe,
     update_X_and_G,
 )
+from lbfgsb.mathops import np
 from lbfgsb.types import NDArrayFloat
 
 logger: logging.Logger = logging.getLogger("L-BFGS-B")

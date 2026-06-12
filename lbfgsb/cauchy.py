@@ -31,10 +31,9 @@ constrained optimization.
 import logging
 from typing import Optional, Tuple
 
-import numpy as np
-
 from lbfgsb._numba_helpers import njit
 from lbfgsb.bfgsmats import LBFGSB_MATRICES, bmv, bmv_numba
+from lbfgsb.mathops import np
 from lbfgsb.types import NDArrayFloat, NDArrayInt
 
 _FLOAT_MAX = np.finfo(np.float64).max

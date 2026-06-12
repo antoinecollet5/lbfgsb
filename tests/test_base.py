@@ -8,7 +8,6 @@ import re
 from contextlib import nullcontext as does_not_raise
 from typing import Sequence
 
-import numpy as np
 import pytest
 from lbfgsb.base import (
     clip2bounds,
@@ -20,6 +19,7 @@ from lbfgsb.base import (
     is_any_inf,
     projgr,
 )
+from lbfgsb.mathops import np
 from lbfgsb.types import NDArrayFloat
 
 

@@ -1,9 +1,8 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright (c) 2025 Antoine COLLET
 
-import numpy as np
-import scipy.linalg
 from lbfgsb import extract_hess_inv_diag, get_grad_projection_inf_norm
+from lbfgsb.mathops import np, sp
 from numpy.testing import assert_allclose
 from scipy.optimize import minimize
 
@@ -33,7 +32,7 @@ def test_2():
     H0 = [[3, 0], [1, 2]]
 
     def f(x):
-        return np.dot(x, np.dot(scipy.linalg.inv(H0), x))
+        return np.dot(x, np.dot(sp.linalg.inv(H0), x))
 
     result1 = minimize(fun=f, method="L-BFGS-B", x0=[10, 20])
     result2 = minimize(fun=f, method="BFGS", x0=[10, 20])

@@ -6,10 +6,10 @@ import logging
 import re
 from typing import Deque
 
-import numpy as np
 import pytest
 from lbfgsb import InternalState, minimize_lbfgsb
 from lbfgsb.main import is_f0_target_reached
+from lbfgsb.mathops import np
 from lbfgsb.types import NDArrayFloat
 from scipy.optimize import (
     LbfgsInvHessProduct,  # noqa : F401

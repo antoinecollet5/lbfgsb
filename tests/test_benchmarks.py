@@ -6,7 +6,6 @@
 from typing import Callable
 
 import numdifftools as nd
-import numpy as np
 import pytest
 from lbfgsb import (
     ackley,
@@ -26,6 +25,7 @@ from lbfgsb import (
     styblinski_tang,
     styblinski_tang_grad,
 )
+from lbfgsb.mathops import np
 
 
 @pytest.mark.parametrize(

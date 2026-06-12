@@ -36,10 +36,8 @@ import logging
 from collections import deque
 from typing import Deque, Optional, Tuple
 
-import numpy as np
-import scipy as sp
-
 from lbfgsb._numba_helpers import njit
+from lbfgsb.mathops import cholesky_factorization, np, sp
 from lbfgsb.types import NDArrayFloat
 
 
@@ -188,7 +186,7 @@ def form_invMfactors(theta, STS, L, D) -> Tuple[NDArrayFloat, NDArrayFloat]:
     invD.flat[:: D.shape[0] + 1] = 1 / np.diag(D)
 
     # Cholesky factorization
-    J = sp.linalg.cholesky(theta * STS + L @ invD @ L.T, lower=True)
+    J = cholesky_factorization(theta * STS + L @ invD @ L.T)
 
     m = D.shape[0]
     dtype = D.dtype

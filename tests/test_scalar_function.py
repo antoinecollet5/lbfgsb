@@ -4,9 +4,9 @@
 import re
 from contextlib import nullcontext as does_not_raise
 
-import numpy as np
 import pytest
 from lbfgsb.benchmarks import rosenbrock, rosenbrock_grad
+from lbfgsb.mathops import np
 from lbfgsb.scalar_function import FD_METHODS, ScalarFunction, prepare_scalar_function
 
 
