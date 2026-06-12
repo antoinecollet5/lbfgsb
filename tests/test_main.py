@@ -270,13 +270,12 @@ def test_abnormal_termination_linesearch(
     """Abnormal termination."""
 
     def func(x: NDArrayFloat) -> float:
-        return np.sum(x + np.exp(-10 * x)).item()
-
-    # result = minimize(func, x0=10, method='L-BFGS-B',
-    #                 options={'maxls': 5, 'disp': 1})
+        with np.errstate(over="ignore"):
+            return np.sum(x + np.exp(-10 * x)).item()
 
     def jac(x: NDArrayFloat) -> NDArrayFloat:
-        return 1.0 - 10 * np.exp(-10 * x)
+        with np.errstate(over="ignore"):
+            return 1.0 - 10 * np.exp(-10 * x)
 
     res = minimize_lbfgsb(
         x0=x0,
@@ -359,10 +358,11 @@ def test_checkpointing(is_use_numba_jit: bool) -> None:
 
     # Non correct checkpoint
     wrong_ckp = copy.copy(empty_checkpoint)
-    wrong_ckp.hess_inv = LbfgsInvHessProduct(
-        np.zeros((2, 3)),  # the second dim should be 2
-        np.zeros((2, 3)),  # the second dim should be 2
-    )
+    with np.errstate(divide="ignore"):
+        wrong_ckp.hess_inv = LbfgsInvHessProduct(
+            np.zeros((2, 3)),  # the second dim should be 2
+            np.zeros((2, 3)),  # the second dim should be 2
+        )
     with pytest.raises(
         ValueError,
         match=re.escape(
@@ -548,3 +548,37 @@ def test_user_callback(is_use_numba_jit: bool) -> None:
     )
 
     assert res.nfev == 7
+
+
+def test_obj_and_jac():
+    def objective(x):
+        return x[0] ** 2 + x[1] ** 2
+
+    x0 = np.array([10.0, 10.0])
+    bounds = [(0.0, None), (0.0, None)]
+
+    res = minimize_lbfgsb(
+        x0=x0,
+        fun=objective,
+        jac="2-point",
+        bounds=np.array(bounds),
+    )
+
+    np.testing.assert_allclose(res.x, [0.0, 0.0], atol=1e-6)
+    np.testing.assert_allclose(res.fun, 0.0, atol=1e-10)
+
+    def objective_and_gradient(x):
+        f = x[0] ** 2 + x[1] ** 2
+        g = np.array([2 * x[0], 2 * x[1]])
+        return f, g
+
+    x0 = np.array([10.0, 10.0])
+
+    res = minimize_lbfgsb(
+        x0=x0,
+        fun=objective_and_gradient,
+        jac=True,
+    )
+
+    np.testing.assert_allclose(res.x, [0.0, 0.0], atol=1e-6)
+    np.testing.assert_allclose(res.fun, 0.0, atol=1e-10)

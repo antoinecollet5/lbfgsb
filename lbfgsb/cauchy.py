@@ -36,6 +36,8 @@ from lbfgsb.bfgsmats import LBFGSB_MATRICES, bmv, bmv_numba
 from lbfgsb.mathops import np
 from lbfgsb.types import NDArrayFloat, NDArrayInt
 
+_FLOAT_MAX = np.finfo(np.float64).max
+
 
 def display_start_point(
     nseg: int,
@@ -246,6 +248,95 @@ def _get_cauchy_point_numpy(
 
 
 @njit(cache=True)
+def _all_finite_numba(x: NDArrayFloat) -> bool:
+    for i in range(x.size):
+        if not np.isfinite(x[i]):
+            return False
+    return True
+
+
+@njit(cache=True)
+def _safe_sumsq_numba(x: NDArrayFloat) -> float:
+    """
+    Return sum(x**2) without emitting overflow warnings.
+
+    If the squared norm cannot be represented in float64, return np.inf.
+    """
+    max_abs = 0.0
+
+    for i in range(x.size):
+        ax = abs(x[i])
+        if ax > max_abs:
+            max_abs = ax
+
+    if max_abs == 0.0:
+        return 0.0
+
+    if not np.isfinite(max_abs):
+        return np.inf
+
+    scaled_sum = 0.0
+    for i in range(x.size):
+        y = x[i] / max_abs
+        scaled_sum += y * y
+
+    if scaled_sum == 0.0:
+        return 0.0
+
+    # Need max_abs**2 * scaled_sum <= FLOAT_MAX.
+    # Avoid computing max_abs**2 directly before checking.
+    limit = np.sqrt(_FLOAT_MAX / scaled_sum)
+
+    if max_abs > limit:
+        return np.inf
+
+    return max_abs * max_abs * scaled_sum
+
+
+@njit(cache=True)
+def _safe_delta_t_min_numba(f_prime: float, f_second: float) -> float:
+    """
+    Safely compute -f_prime / f_second.
+
+    Returns np.inf when the local quadratic model is unusable.
+    """
+    if not np.isfinite(f_prime):
+        return np.inf
+
+    if not np.isfinite(f_second):
+        return np.inf
+
+    if f_second <= 0.0:
+        return np.inf
+
+    return -f_prime / f_second
+
+
+@njit(cache=True)
+def _safe_curvature_floor_numba(
+    f_second: float,
+    f2_org: float,
+    eps_f_sec: float,
+) -> float:
+    """Apply the curvature floor only when meaningful."""
+    if not np.isfinite(f_second):
+        return np.inf
+
+    if not np.isfinite(f2_org):
+        return f_second
+
+    if f2_org <= 0.0:
+        return f_second
+
+    floor = eps_f_sec * f2_org
+
+    if f_second < floor:
+        return floor
+
+    return f_second
+
+
+@njit(cache=True)
 def _get_cauchy_point_numba(
     x: NDArrayFloat,
     grad: NDArrayFloat,
@@ -267,6 +358,7 @@ def _get_cauchy_point_numba(
     # Breakpoints
     for i in range(n):
         gi = grad[i]
+
         if gi < 0.0:
             t[i] = (x[i] - ub[i]) / gi
         elif gi > 0.0:
@@ -276,9 +368,14 @@ def _get_cauchy_point_numba(
 
         d[i] = -gi if t[i] != 0.0 else 0.0
 
-    # positive breakpoints
+    # If the initial search direction is already non-finite, stop early.
+    if not _all_finite_numba(d):
+        return x_cp, np.zeros(m)
+
+    # Positive breakpoints
     pos_idx = np.empty(n, dtype=np.int64)
     k = 0
+
     for i in range(n):
         if t[i] > 0.0:
             pos_idx[k] = i
@@ -290,19 +387,46 @@ def _get_cauchy_point_numba(
     pos_idx = pos_idx[:k]
     pos_idx = pos_idx[np.argsort(t[pos_idx])]
 
-    # initialization
+    # Initialization
     p = W.T @ d
     c = np.zeros(m)
 
-    f_prime = -np.dot(d, d)
-    f_second = -theta * f_prime
+    if not _all_finite_numba(p):
+        return x_cp, c
+
+    dd = _safe_sumsq_numba(d)
+
+    # If ||d||^2 overflows, the local quadratic model is unusable.
+    # Return the current finite Cauchy state instead of propagating inf/nan.
+    if not np.isfinite(dd):
+        return x_cp, c
+
+    f_prime = -dd
+    f_second = theta * dd
     f2_org = f_second
+
+    if not np.isfinite(f_second) or f_second <= 0.0:
+        return x_cp, c
 
     if use_factor:
         tmp = bmv_numba(*invMfactors, p)
-        f_second -= np.dot(p, tmp)
 
-    delta_t_min = -f_prime / f_second
+        if not _all_finite_numba(tmp):
+            return x_cp, c
+
+        correction = np.dot(p, tmp)
+
+        if not np.isfinite(correction):
+            return x_cp, c
+
+        f_second -= correction
+
+    f_second = _safe_curvature_floor_numba(f_second, f2_org, eps_f_sec)
+
+    delta_t_min = _safe_delta_t_min_numba(f_prime, f_second)
+
+    if not np.isfinite(delta_t_min):
+        return x_cp, c
 
     t_old = 0.0
     ibp = pos_idx[0]
@@ -311,51 +435,115 @@ def _get_cauchy_point_numba(
     i = 0
 
     while i < k:
+        if not np.isfinite(delta_t):
+            return x_cp, c
+
         if delta_t_min < delta_t:
             break
 
-        zb = ub[ibp] - x[ibp] if d[ibp] > 0 else lb[ibp] - x[ibp]
+        zb = ub[ibp] - x[ibp] if d[ibp] > 0.0 else lb[ibp] - x[ibp]
+
+        if not np.isfinite(zb):
+            return x_cp, c
+
         x_cp[ibp] = x[ibp] + zb
 
+        # c += delta_t * p
+        if not _all_finite_numba(p):
+            return x_cp, c
+
         c += delta_t * p
+
+        if not _all_finite_numba(c):
+            return x_cp, np.zeros(m)
 
         Wb = W[ibp]
         gb = grad[ibp]
 
+        if not np.isfinite(gb):
+            return x_cp, c
+
+        # Update f_prime and f_second carefully.
         f_prime += delta_t * f_second + gb * (gb + theta * zb)
         f_second -= gb * gb * theta
 
+        if not np.isfinite(f_prime) or not np.isfinite(f_second):
+            return x_cp, c
+
         if use_factor:
             invMWb = bmv_numba(*invMfactors, Wb)
-            f_prime -= gb * np.dot(invMWb, c)
-            f_second -= gb * (2.0 * np.dot(invMWb, p) + gb * np.dot(invMWb, Wb))
 
-        if f_second < eps_f_sec * f2_org:
-            f_second = eps_f_sec * f2_org
+            if not _all_finite_numba(invMWb):
+                return x_cp, c
+
+            dot_invMWb_c = np.dot(invMWb, c)
+            dot_invMWb_p = np.dot(invMWb, p)
+            dot_invMWb_Wb = np.dot(invMWb, Wb)
+
+            if (
+                not np.isfinite(dot_invMWb_c)
+                or not np.isfinite(dot_invMWb_p)
+                or not np.isfinite(dot_invMWb_Wb)
+            ):
+                return x_cp, c
+
+            f_prime -= gb * dot_invMWb_c
+            f_second -= gb * (2.0 * dot_invMWb_p + gb * dot_invMWb_Wb)
+
+            if not np.isfinite(f_prime) or not np.isfinite(f_second):
+                return x_cp, c
+
+        f_second = _safe_curvature_floor_numba(f_second, f2_org, eps_f_sec)
+
+        if not np.isfinite(f_second) or f_second <= 0.0:
+            return x_cp, c
 
         p += gb * Wb
+
+        if not _all_finite_numba(p):
+            return x_cp, c
+
         d[ibp] = 0.0
 
-        delta_t_min = -f_prime / f_second
+        delta_t_min = _safe_delta_t_min_numba(f_prime, f_second)
+
+        if not np.isfinite(delta_t_min):
+            return x_cp, c
+
         t_old = t_cur
 
         i += 1
+
         if i < k:
             ibp = pos_idx[i]
             t_cur = t[ibp]
+            delta_t = t_cur - t_old
         else:
             t_cur = np.inf
+            delta_t = t_cur
 
-        delta_t = t_cur - t_old
+    if delta_t_min < 0.0:
+        delta_t_min = 0.0
 
-    delta_t_min = max(0.0, delta_t_min)
     t_old += delta_t_min
+
+    if not np.isfinite(t_old):
+        return x_cp, c
 
     for i in range(n):
         if t[i] >= t_cur:
-            x_cp[i] = x[i] + t_old * d[i]
+            xi = x[i] + t_old * d[i]
+
+            if np.isfinite(xi):
+                x_cp[i] = xi
+            else:
+                return x_cp, c
 
     c += delta_t_min * p
+
+    if not _all_finite_numba(c):
+        return x_cp, np.zeros(m)
+
     return x_cp, c
 
 

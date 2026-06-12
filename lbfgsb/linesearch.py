@@ -5,10 +5,18 @@ r"""
 Implement the line search algorithm by Moré and Thuente (1994),
 currently used for the L-BFGS-B algorithm.
 
-The target of this line search algorithm is to find a step size \f$\alpha\f$ that
-satisfies the strong Wolfe condition
-\f$f(x+\alpha d) \le f(x) + \alpha\mu g(x)^T d\f$ and \f$|g(x+\alpha d)^T d| \le
-\eta|g(x)^T d|\f$.
+The target of this line search algorithm is to find a step size :math:`\alpha`
+that satisfies the strong Wolfe conditions
+
+.. math::
+
+    f(x + \alpha d) \leq f(x) + \alpha \mu g(x)^T d
+
+and
+
+.. math::
+
+    |g(x + \alpha d)^T d| \leq \eta |g(x)^T d|.
 
 Functions
 ^^^^^^^^^
@@ -19,14 +27,14 @@ Functions
     max_allowed_steplength
     line_search
 
-Reference:
+References
+----------
 [1] Moré, J. J., & Thuente, D. J. (1994). Line search algorithms with guaranteed
-sufficient decrease.
+    sufficient decrease.
 """
 
 import logging
 import warnings
-from copy import copy
 from typing import Optional
 
 import numpy as tnp
@@ -39,6 +47,98 @@ from lbfgsb.mathops import errorstate, np, sp
 from lbfgsb.scalar_function import ScalarFunction
 from lbfgsb.types import NDArrayFloat
 
+_FLOAT64_MAX = np.finfo(np.float64).max
+
+
+def _safe_sumsq(x: NDArrayFloat) -> float:
+    """Return ``sum(x**2)`` without emitting overflow warnings.
+
+    If the squared norm cannot be represented as a finite ``float64``, return
+    ``np.inf``.
+
+    Parameters
+    ----------
+    x : NDArrayFloat
+        Input vector.
+
+    Returns
+    -------
+    float
+        Squared Euclidean norm, or ``np.inf`` if it cannot be represented
+        finitely.
+    """
+    if x.size == 0:
+        return 0.0
+
+    if not np.all(np.isfinite(x)):
+        return float("inf")
+
+    max_abs = float(np.max(np.abs(x)))
+
+    if max_abs == 0.0:
+        return 0.0
+
+    if not np.isfinite(max_abs):
+        return float("inf")
+
+    y = x / max_abs
+
+    with np.errstate(over="ignore", invalid="ignore"):
+        scaled_sum = float(np.dot(y, y))
+
+    if not np.isfinite(scaled_sum) or scaled_sum <= 0.0:
+        return float("inf")
+
+    limit = np.sqrt(_FLOAT64_MAX / scaled_sum)
+
+    if max_abs > limit:
+        return float("inf")
+
+    return float(max_abs * max_abs * scaled_sum)
+
+
+def _safe_dot(a: NDArrayFloat, b: NDArrayFloat) -> float:
+    """Return ``dot(a, b)`` while avoiding floating-point warnings.
+
+    Parameters
+    ----------
+    a, b : NDArrayFloat
+        Input vectors.
+
+    Returns
+    -------
+    float
+        Dot product if finite, otherwise ``np.inf``.
+    """
+    if not np.all(np.isfinite(a)) or not np.all(np.isfinite(b)):
+        return float("inf")
+
+    with np.errstate(over="ignore", invalid="ignore"):
+        value = float(np.dot(a, b))
+
+    if not np.isfinite(value):
+        return float("inf")
+
+    return value
+
+
+def _trial_point(
+    x0: NDArrayFloat,
+    alpha: float,
+    d: NDArrayFloat,
+) -> Optional[NDArrayFloat]:
+    """Return ``x0 + alpha * d`` if finite, otherwise ``None``."""
+    if not np.isfinite(alpha):
+        return None
+
+    with np.errstate(over="ignore", invalid="ignore"):
+        x = x0 + alpha * d
+
+    if not np.all(np.isfinite(x)):
+        return None
+
+    return x
+
 
 def max_allowed_steplength(
     x: NDArrayFloat,
@@ -49,28 +149,39 @@ def max_allowed_steplength(
     n_iter: int,
 ) -> float:
     r"""
-    Computes the biggest 0<=k<=max_steplength such that:
-        l<= x+kd <= u
+    Compute the largest admissible nonnegative step length.
+
+    The returned step length ``alpha`` satisfies
+
+    .. math::
+
+        lb \leq x + \alpha d \leq ub
+
+    and
+
+    .. math::
+
+        0 \leq \alpha \leq \mathrm{max\_steplength}.
 
     Parameters
     ----------
     x : NDArrayFloat
         Starting point.
     d : NDArrayFloat
-        Direction.
+        Search direction.
     lb : NDArrayFloat
-        the lower bound of x.
+        Lower bounds.
     ub : NDArrayFloat
-        The upper bound of x
+        Upper bounds.
     max_steplength : float
-        Maximum steplength allowed.
-    n_iter: int
-        Current number of outer itreations.
+        Maximum step length allowed by the caller.
+    n_iter : int
+        Current number of outer iterations.
 
     Returns
     -------
     float
-        maximum steplength allowed
+        Maximum admissible step length.
 
     References
     ----------
@@ -79,25 +190,42 @@ def max_allowed_steplength(
       Statistical Computing, 16, 5, pp. 1190-1208.
     * C. Zhu, R. H. Byrd and J. Nocedal. L-BFGS-B: Algorithm 778: L-BFGS-B,
       FORTRAN routines for large scale bound constrained optimization (1997),
-      ACM Transactions on Mathematical Software, 23, 4, pp. 550 - 560.
-    * J.L. Morales and J. Nocedal. L-BFGS-B: Remark on Algorithm 778: L-BFGS-B,
-      FORTRAN routines for large scale bound constrained optimization (2011),
-      ACM Transactions on Mathematical Software, 38, 1.
+      ACM Transactions on Mathematical Software, 23, 4, pp. 550-560.
+    * J. L. Morales and J. Nocedal. L-BFGS-B: Remark on Algorithm 778:
+      L-BFGS-B, FORTRAN routines for large scale bound constrained optimization
+      (2011), ACM Transactions on Mathematical Software, 38, 1.
     """
-    # Determine the maximum step length.
     if n_iter == 0:
-        return 1.0  # we are not sure this is a good idea
-    with tnp.errstate(divide="ignore"):
-        _mask = d != 0
-        _tmp = np.where(
-            d[_mask] > 0, (ub - x)[_mask] / d[_mask], (lb - x)[_mask] / d[_mask]
+        return 1.0
+
+    if not np.isfinite(max_steplength) or max_steplength <= 0.0:
+        return 0.0
+
+    if not np.all(np.isfinite(d)):
+        return 0.0
+
+    mask = d != 0.0
+
+    if not np.any(mask):
+        return float(max_steplength)
+
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        candidates = np.where(
+            d[mask] > 0.0,
+            (ub[mask] - x[mask]) / d[mask],
+            (lb[mask] - x[mask]) / d[mask],
         )
-        if _tmp[np.isfinite(_tmp)].size == 0:
-            return max_steplength
-        return min(max_steplength, np.nanmin(_tmp[np.isfinite(_tmp)]))
+
+    candidates = candidates[np.isfinite(candidates)]
+    candidates = candidates[candidates >= 0.0]
+
+    if candidates.size == 0:
+        return float(max_steplength)
+
+    return float(min(max_steplength, float(np.min(candidates))))
 
 
-@njit(cache=True, fastmath=True)
+@njit(cache=True)
 def max_allowed_steplength_numba(
     x: NDArrayFloat,
     d: NDArrayFloat,
@@ -105,10 +233,13 @@ def max_allowed_steplength_numba(
     ub: NDArrayFloat,
     max_steplength: float,
     n_iter: int,
-):
-    """See :function:`max_allowed_steplength_numba`."""
+) -> float:
+    """See :func:`max_allowed_steplength`."""
     if n_iter == 0:
         return 1.0
+
+    if not np.isfinite(max_steplength) or max_steplength <= 0.0:
+        return 0.0
 
     alpha = max_steplength
     found = False
@@ -116,13 +247,17 @@ def max_allowed_steplength_numba(
     n = x.size
     for i in range(n):
         di = d[i]
+
+        if not np.isfinite(di):
+            return 0.0
+
         if di != 0.0:
             if di > 0.0:
                 tmp = (ub[i] - x[i]) / di
             else:
                 tmp = (lb[i] - x[i]) / di
 
-            if tmp >= 0.0:
+            if np.isfinite(tmp) and tmp >= 0.0:
                 if not found or tmp < alpha:
                     alpha = tmp
                     found = True
@@ -147,158 +282,195 @@ def line_search(
     max_iter: int = 30,
     iprint: int = 10,
     logger: Optional[logging.Logger] = None,
-    isave: np.typing.NDArray[np.intc] = np.zeros((2,), np.intc),
-    dsave: NDArrayFloat = np.zeros((13,), np.float64),
+    isave: Optional[np.typing.NDArray[np.intc]] = None,
+    dsave: Optional[NDArrayFloat] = None,
     is_use_numba_jit: bool = False,
 ) -> Optional[float]:
     r"""
-    Find a step that satisfies both decrease condition and a curvature condition.
+    Find a step satisfying sufficient decrease and curvature conditions.
 
-        f(x0+stp*d) <= f(x0) + alpha*stp*\langle f'(x0),d\rangle,
+    The line search attempts to find a step length ``alpha`` such that
 
-    and the curvature condition
+    .. math::
 
-        abs(f'(x0+stp*d)) <= beta*abs(\langle f'(x0),d\rangle).
+        f(x_0 + \alpha d)
+        \leq
+        f(x_0) + c_1 \alpha \nabla f(x_0)^T d
 
-    If alpha is less than beta and if, for example, the functionis bounded below, then
-    there is always a step which satisfies both conditions.
+    and
 
-    Note
-    ----
-    When using scipy-1.11 and below, this subroutine calls subroutine dcsrch from the
-    Minpack2 library to perform the line search.  Subroutine dscrch is safeguarded so
-    that all trial points lie within the feasible region. Otherwise, it uses the
-    python reimplementation introduced in scipy-1.12.
+    .. math::
+
+        |\nabla f(x_0 + \alpha d)^T d|
+        \leq
+        c_2 |\nabla f(x_0)^T d|.
+
+    These are the strong Wolfe conditions.
+
+    Notes
+    -----
+    For SciPy versions older than 1.12, this routine calls the historical
+    Minpack2 ``dcsrch`` implementation. For SciPy 1.12 and above, it uses
+    SciPy's Python implementation.
 
     Parameters
     ----------
     x0 : NDArrayFloat
         Starting point.
     f0 : float
-        Objective function value for x0.
+        Objective value at ``x0``.
     g0 : NDArrayFloat
-        Gradient of the objective function for x0.
-    lb : NDArrayFloat
-        Lower bound vector.
-    ub : NDArrayFloat
-        Upper bound vector.
+        Gradient at ``x0``.
     d : NDArrayFloat
         Search direction.
+    lb : NDArrayFloat
+        Lower bounds.
+    ub : NDArrayFloat
+        Upper bounds.
     above_iter : int
-        current iteration in optimization process.
-    max_steplength : float
-        Maximum steplength allowed.
-    is_boxed: bool
-        Whether all values have both lower and upper bounds.
-    sf: ScalarFunction
-        Wrapper for the objective function and its gradient.
-    ftol_linesearch: float, optional
-        Specify a nonnegative tolerance for the sufficient decrease condition in
-        `minpack2.dcsrch <https://ftp.mcs.anl.gov/pub/MINPACK-2/csrch/dcsrch.f>`_
-        (used for the line search). This is :math:`c_1` in
-        the Armijo condition (or Goldstein, Goldstein-Armijo condition) where
-        :math:`\alpha_{k}` is the estimated step.
-
-        .. math::
-
-            f(\mathbf{x}_{k}+\alpha_{k}\mathbf{p}_{k})\leq
-            f(\mathbf{x}_{k})+c_{1}\alpha_{k}\mathbf{p}_{k}^{\mathrm{T}}
-            \nabla f(\mathbf{x}_{k})
-
-        Note that :math:`0 < c_1 < 1`. Usually :math:`c_1` is small, see the Wolfe
-        conditions in :cite:t:`nocedalNumericalOptimization1999`.
-        In the fortran implementation
-        algo 778, it is hardcoded to 1e-3. The default is 1e-4.
-    gtol_linesearch: float, optional
-        Specify a nonnegative tolerance for the curvature condition in
-        `minpack2.dcsrch <https://ftp.mcs.anl.gov/pub/MINPACK-2/csrch/dcsrch.f>`_
-        (used for the line search). This is :math:`c_2` in
-        the Armijo condition (or Goldstein, Goldstein-Armijo condition) where
-        :math:`\alpha_{k}` is the estimated step.
-
-        .. math::
-
-            \left|\mathbf{p}_{k}^{\mathrm {T}}\nabla f(\mathbf{x}_{k}+\alpha_{k}
-            \mathbf{p}_{k})\right|\leq c_{2}\left|\mathbf {p}_{k}^{\mathrm{T}}\nabla
-            f(\mathbf{x}_{k})\right|
-
-        Note that :math:`0 < c_1 < c_2 < 1`. Usually, :math:`c_2` is
-        much larger than :math:`c_2`.
-        see :cite:t:`nocedalNumericalOptimization1999`. In the fortran implementation
-        algo 778, it is hardcoded to 0.9. The default is 0.9.
-    xtol_linesearch: float, optional
-        Specify a nonnegative relative tolerance for an acceptable step in the line
-        search procedure (see
-        `minpack2.dcsrch <https://ftp.mcs.anl.gov/pub/MINPACK-2/csrch/dcsrch.f>`_).
-        In the fortran implementation algo 778, it is hardcoded to 0.1.
-        The default is 1e-5.
+        Current outer iteration number.
+    max_steplength_user : float
+        User-provided maximum step length.
+    is_boxed : bool
+        Whether all variables have both lower and upper bounds.
+    sf : ScalarFunction
+        Objective and gradient wrapper.
+    ftol : float, optional
+        Sufficient-decrease Wolfe parameter :math:`c_1`. Default is ``1e-3``.
+    gtol : float, optional
+        Curvature Wolfe parameter :math:`c_2`. Default is ``0.9``.
+    xtol : float, optional
+        Relative tolerance for acceptable steps in the line-search procedure.
+        Default is ``1e-1``.
     max_iter : int, optional
-            Maximum number of linesearch iterations, by default 30.
+        Maximum number of line-search iterations. Default is ``30``.
     iprint : int, optional
-        Controls the frequency of output. ``iprint < 0`` means no output;
-        ``iprint = 0``    print only one line at the last iteration;
-        ``0 < iprint < 99`` print also f and ``|proj g|`` every iprint iterations;
-        ``iprint >= 99``   print details of every iteration except n-vectors;
-    logger: Optional[Logger], optional
-        :class:`logging.Logger` instance. If None, nothing is displayed, no matter the
-        value of `iprint`, by default None.
-    is_use_numba_jit: bool
-        Whether to use `numba` just-in-time compilation to speed-up the computation
-        intensive part of the algorithm. The default is False.
-        .. versionadded:: 1.0
+        Verbosity level. Default is ``10``.
+    logger : logging.Logger, optional
+        Logger used for textual output.
+    isave : ndarray, optional
+        Integer workspace used by the legacy Minpack2 implementation.
+    dsave : ndarray, optional
+        Floating-point workspace used by the legacy Minpack2 implementation.
+    is_use_numba_jit : bool, optional
+        Whether to use Numba-compiled helper functions. Default is ``False``.
 
     Returns
     -------
-    Optional[float]
-        The step length.
-
-    References
-    ----------
-    * R. H. Byrd, P. Lu and J. Nocedal. A Limited Memory Algorithm for Bound
-      Constrained Optimization, (1995), SIAM Journal on Scientific and
-      Statistical Computing, 16, 5, pp. 1190-1208.
-    * C. Zhu, R. H. Byrd and J. Nocedal. L-BFGS-B: Algorithm 778: L-BFGS-B,
-      FORTRAN routines for large scale bound constrained optimization (1997),
-      ACM Transactions on Mathematical Software, 23, 4, pp. 550 - 560.
-    * J.L. Morales and J. Nocedal. L-BFGS-B: Remark on Algorithm 778: L-BFGS-B,
-      FORTRAN routines for large scale bound constrained optimization (2011),
-      ACM Transactions on Mathematical Software, 38, 1.
+    float or None
+        Step length if the line search succeeds or returns a usable warning
+        state. ``None`` otherwise.
     """
+    if isave is None:
+        isave = np.zeros((2,), dtype=np.intc)
 
-    # steplength_0 = 1 if max_steplength > 1 else 0.5 * max_steplength
+    if dsave is None:
+        dsave = np.zeros((13,), dtype=np.float64)
+
+    if max_iter <= 0:
+        return None
+
+    if not np.isfinite(f0):
+        return None
+
+    if not np.all(np.isfinite(x0)):
+        return None
+
+    if not np.all(np.isfinite(g0)):
+        return None
+
+    if not np.all(np.isfinite(d)):
+        return None
+
     if is_use_numba_jit:
         max_steplength = max_allowed_steplength_numba(
-            x0, d, lb, ub, max_steplength_user, above_iter
+            x0,
+            d,
+            lb,
+            ub,
+            max_steplength_user,
+            above_iter,
         )
     else:
         max_steplength = max_allowed_steplength(
-            x0, d, lb, ub, max_steplength_user, above_iter
+            x0,
+            d,
+            lb,
+            ub,
+            max_steplength_user,
+            above_iter,
         )
-    dphi0 = g0.dot(d)
+
+    if not np.isfinite(max_steplength) or max_steplength <= 0.0:
+        return None
+
+    dphi0 = _safe_dot(g0, d)
+
+    if not np.isfinite(dphi0):
+        return None
+
+    # Moré-Thuente line search requires a descent direction.
+    if dphi0 >= 0.0:
+        return None
 
     if above_iter == 0 and not is_boxed:
-        steplength_0 = min(1.0 / np.sqrt(d.dot(d)), max_steplength)
-    else:
-        steplength_0 = np.array([1.0])
+        dd = _safe_sumsq(d)
 
-    # Support for python 3.7 and 3.8: the minpack2 wrapper has been removed from
-    # scipy from version 1.12 and replaced with a python implementation.
-    # Unfortunately, python 3.7 and 3.8 do not support scipy-1.12
-    # So we need to use the old minpack2 Fortran implementation
+        if not np.isfinite(dd) or dd <= 0.0:
+            return None
+
+        steplength_0 = min(1.0 / np.sqrt(dd), max_steplength)
+    else:
+        steplength_0 = min(1.0, max_steplength)
+
+    if not np.isfinite(steplength_0) or steplength_0 <= 0.0:
+        return None
+
+    # Support for Python 3.7 and 3.8: the minpack2 wrapper was removed from
+    # SciPy 1.12 and replaced by a Python implementation. Python 3.7 and 3.8
+    # cannot use SciPy 1.12, so the legacy Minpack2 path is still needed.
     is_use_minpack2: bool = Version(spversion) < Version("1.12")
 
     def phi(alpha: float) -> float:
-        """Return the objective function for a steplength of `alpha`"""
-        return sf.fun(x0 + alpha * d)
+        """Return objective value for step length ``alpha``."""
+        x_trial = _trial_point(x0, alpha, d)
 
-    def dphi(alpha: float) -> NDArrayFloat:
-        """Return the gradient of `phi` with respect to alpha."""
-        return sf.grad(x0 + alpha * d).dot(d)
+        if x_trial is None:
+            return float("inf")
+
+        value = sf.fun(x_trial)
+
+        if not np.isfinite(value):
+            return float("inf")
+
+        return float(value)
+
+    def dphi(alpha: float) -> float:
+        """Return directional derivative for step length ``alpha``."""
+        x_trial = _trial_point(x0, alpha, d)
+
+        if x_trial is None:
+            return float("nan")
+
+        grad = sf.grad(x_trial)
+
+        if not np.all(np.isfinite(grad)):
+            return float("nan")
+
+        value = _safe_dot(grad, d)
+
+        if not np.isfinite(value):
+            return float("nan")
+
+        return float(value)
 
     task = b"START"
-    f_m1 = f0
-    dphi_m1 = dphi0
+    f_m1 = float(f0)
+    dphi_m1 = float(dphi0)
     _iter = 0
+
+    steplength: Optional[float] = None
+    best_stp: Optional[float] = None
 
     if not is_use_minpack2:
         # careful, there is an issue in the DCSRRCH.__call__ function. It returns
@@ -311,12 +483,14 @@ def line_search(
         dcsrch = _dcsrch.DCSRCH(phi, dphi, ftol, gtol, xtol, 0.0, max_steplength)
 
     while _iter < max_iter:
-        if is_use_minpack2:  # scipy older than 1.12, uses the Fortran implementation
+        if is_use_minpack2:
+            # SciPy older than 1.12 uses the Fortran Minpack2 implementation.
             with warnings.catch_warnings():
-                # optimize.minpack2 might be deprecated but we handle this deprecation
-                # for python above 3.8 so no need to raise a warning.
+                # scipy.optimize.minpack2 may be deprecated on newer SciPy
+                # versions, but this path is needed for Python 3.7/3.8
+                # compatibility.
                 warnings.filterwarnings("ignore", category=DeprecationWarning)
-                steplength, f0, dphi0, task = sp.optimize.minpack2.dcsrch(
+                steplength_raw, f0_raw, dphi0_raw, task = sp.optimize.minpack2.dcsrch(
                     steplength_0,
                     f_m1,
                     dphi_m1,
@@ -329,42 +503,92 @@ def line_search(
                     isave,
                     dsave,
                 )
+
+            steplength = None if steplength_raw is None else float(steplength_raw)
+            f0 = float(f0_raw)
+            dphi0 = float(dphi0_raw)
+
         else:
-            # newer version, with a pure python implementation
-            steplength, f0, dphi0, task = dcsrch._iterate(
-                steplength_0, f_m1, dphi_m1, task
+            # SciPy >= 1.12 uses the Python implementation.
+            steplength_raw, f0_raw, dphi0_raw, task = dcsrch._iterate(
+                steplength_0,
+                f_m1,
+                dphi_m1,
+                task,
             )
 
+            steplength = None if steplength_raw is None else float(steplength_raw)
+
         if task[:2] == b"FG":
-            stp_old: float = copy(steplength_0)
-            f_m1_old: float = copy(f_m1)
-            steplength_0 = steplength
-            f_m1, dphi_m1 = sf.fun_and_grad(x0 + steplength * d)
-            dphi_m1 = dphi_m1.dot(d)
-            best_stp = steplength if f_m1 < f_m1_old else stp_old
+            if steplength is None:
+                return None
+
+            if not np.isfinite(steplength) or steplength <= 0.0:
+                return None
+
+            x_trial = _trial_point(x0, steplength, d)
+
+            if x_trial is None:
+                return None
+
+            stp_old = float(steplength_0)
+            f_m1_old = float(f_m1)
+
+            steplength_0 = float(steplength)
+
+            f_new, g_new = sf.fun_and_grad(x_trial)
+
+            if not np.isfinite(f_new):
+                return None
+
+            if not np.all(np.isfinite(g_new)):
+                return None
+
+            dphi_new = _safe_dot(g_new, d)
+
+            if not np.isfinite(dphi_new):
+                return None
+
+            f_m1 = float(f_new)
+            dphi_m1 = float(dphi_new)
+
+            if f_m1 < f_m1_old:
+                best_stp = steplength_0
+            else:
+                best_stp = stp_old
+
         else:
             break
+
         _iter += 1
+
     else:
-        # max_iter reached, the line search did not converge
+        # max_iter reached: the line search did not converge.
         task = b"WARNING: dcsrch did not converge within max iterations"
 
-    if steplength is not None:
-        if not np.isfinite(steplength) or steplength == 0.0:
-            task = b"ERROR"
-            return None
+    if steplength is None:
+        return None
+
+    if not np.isfinite(steplength) or steplength <= 0.0:
+        return None
 
     if task[:4] != b"CONV" and task[:4] != b"WARN":
         return None
 
-    steplength = best_stp
+    if best_stp is not None:
+        steplength = best_stp
 
-    task = b"NEW_X"
+    if not np.isfinite(steplength) or steplength <= 0.0:
+        return None
 
-    if iprint >= 99 and logger is not None and steplength is not None:
-        logger.info(
-            f"LINE SEARCH {_iter} times; norm of step = "
-            f"{steplength * np.linalg.norm(d)}"
-        )
+    if iprint >= 99 and logger is not None:
+        dd = _safe_sumsq(d)
 
-    return steplength
+        if np.isfinite(dd):
+            norm_step = steplength * np.sqrt(dd)
+        else:
+            norm_step = float("inf")
+
+        logger.info(f"LINE SEARCH {_iter} times; norm of step = {norm_step}")
+
+    return float(steplength)
