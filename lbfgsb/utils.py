@@ -1,21 +1,29 @@
 # SPDX-License-Identifier: BSD-3-Clause
-# Copyright (c) 2025 Antoine COLLET
+# Copyright (c) 2024-2026 Antoine COLLET
 
 """Provide optimization utilities."""
 
+from __future__ import annotations
+
+from typing import Optional, overload
+
+import numpy as np  # real numpy — LbfgsInvHessProduct.matvec always returns numpy
 from scipy.optimize import LbfgsInvHessProduct
 
-from lbfgsb.mathops import np
-from lbfgsb.types import NDArrayFloat
+from lbfgsb.backend import Backend, get_backend
+from lbfgsb.types import AnyArray, NDArrayFloat
 
 
 def extract_hess_inv_diag(hess_inv: LbfgsInvHessProduct) -> NDArrayFloat:
-    """
-    Extract efficiently the diagonal of the L-BFGS approximate inverse Hessian.
+    """Extract efficiently the diagonal of the L-BFGS approximate inverse Hessian.
 
-    It relies on the linear operator `matvec` operation and consequenlty does not
-    require to build the dense matrix which is much longer and generally untractable
-    for large-scale problems.
+    Relies on the linear operator ``matvec`` operation — no dense matrix is
+    formed, so it remains tractable for large-scale problems.
+
+    ``LbfgsInvHessProduct`` is a scipy object whose ``sk`` / ``yk`` correction
+    pairs are always plain NumPy arrays (they are stored as numpy inside the
+    solver regardless of the active backend).  The result is therefore always
+    a ``NDArrayFloat``.
 
     Parameters
     ----------
@@ -25,40 +33,71 @@ def extract_hess_inv_diag(hess_inv: LbfgsInvHessProduct) -> NDArrayFloat:
     Returns
     -------
     NDArrayFloat
-        The diagonal of the L-BFGS approximated inverse Hessian.
+        Diagonal of the L-BFGS approximated inverse Hessian.
     """
-    n_params = hess_inv.shape[0]
-    hess_inv_diag = np.zeros(n_params)
+    n_params: int = hess_inv.shape[0]
+    hess_inv_diag: NDArrayFloat = np.zeros(n_params)
     for i in range(n_params):
-        v = np.zeros(n_params)
+        v: NDArrayFloat = np.zeros(n_params)
         v[i] = 1.0
         hess_inv_diag[i] = hess_inv.matvec(v)[i]
     return hess_inv_diag
 
 
+@overload
 def get_grad_projection_inf_norm(
     x: NDArrayFloat,
     grad: NDArrayFloat,
     lbounds: NDArrayFloat,
     ubounds: NDArrayFloat,
+    nx: None = ...,
+) -> float: ...
+
+
+@overload
+def get_grad_projection_inf_norm(
+    x: AnyArray,
+    grad: AnyArray,
+    lbounds: AnyArray,
+    ubounds: AnyArray,
+    nx: Backend,
+) -> float: ...
+
+
+def get_grad_projection_inf_norm(
+    x,
+    grad,
+    lbounds,
+    ubounds,
+    nx: Optional[Backend] = None,
 ) -> float:
-    """
-    Get the infinite norm of the projected gradient.
+    """Return the infinity norm of the projected gradient.
+
+    Computes ``‖x − P[x − g]‖∞`` where ``P`` is the projection onto
+    ``[lbounds, ubounds]``.  This is the standard convergence criterion
+    used by L-BFGS-B.
+
+    Works with any backend (NumPy, CuPy, JAX) — the backend is inferred
+    from ``x`` when ``nx`` is not supplied.
 
     Parameters
     ----------
-    x : NDArrayFloat
-        Parameter vector.
-    grad : NDArrayFloat
-        Gradient of the parameter vector.
-    lbounds : NDArrayFloat
-        Lower bounds.
-    ubounds : NDArrayFloat
-        Upper bounds.
+    x : AnyArray
+        Current parameter vector.
+    grad : AnyArray
+        Gradient at ``x``.
+    lbounds : AnyArray
+        Lower bounds (same shape as ``x``).
+    ubounds : AnyArray
+        Upper bounds (same shape as ``x``).
+    nx : Backend, optional
+        Backend to use.  Inferred from ``x`` when ``None``.
 
     Returns
     -------
     float
-        The scaling factor.
+        ``max |x - clip(x - grad, lbounds, ubounds)|``.
     """
-    return np.max(np.abs(x - np.clip(x - grad, a_min=lbounds, a_max=ubounds))).item()
+    if nx is None:
+        nx = get_backend(x)
+    return float(nx.max(nx.abs(x - nx.clip(x - grad, lbounds, ubounds))))

@@ -1,112 +1,52 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright (c) 2025 Antoine COLLET
+
 """
-prysm's interchangeable backend system for supporting numpy-like backends:
-    https://github.com/brandondube/prysm/blob/master/prysm/mathops.py
+mathops.py — compatibility shim (deprecated).
+
+The global BackendShim has been replaced by the POT-style
+:mod:`lbfgsb.backend` module.  This file now simply re-exports the numpy
+backend's underlying module references so that any remaining internal calls
+that still use the old ``from lbfgsb.mathops import np`` pattern continue
+to work during the migration.
+
+.. deprecated::
+    Import from :mod:`lbfgsb.backend` instead:
+
+    .. code-block:: python
+
+        from lbfgsb.backend import get_backend
+        nx = get_backend(x)
+        result = nx.zeros(x.shape)
 """
 
 import warnings
-from ast import arg
 
-import numpy as np
-import scipy as sp
-import scipy.linalg as la
 from scipy import optimize
 from scipy.linalg import cholesky
 
+warnings.warn(
+    "lbfgsb.mathops is deprecated and will be removed in a future release. "
+    "Use lbfgsb.backend.get_backend() instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
-class BackendShim:
-    """A shim that allows a backend to be swapped at runtime."""
-
-    def __init__(self, src):
-        self._srcmodule = src
-
-    def __getattr__(self, key):
-        if key == "_srcmodule":
-            return self._srcmodule
-
-        return getattr(self._srcmodule, key)
+# Keep these names importable so old internal code doesn't break immediately.
+optimize = optimize
+cholesky_factorization = lambda x: cholesky(x, lower=True)  # noqa: E731
 
 
-_np = np
-_sp = sp
-_optimize = optimize
-_la = la
-
-np = BackendShim(np)
-sp = BackendShim(sp)
-optimize = BackendShim(optimize)
-la = BackendShim(la)
+def set_backend_to_cupy() -> None:
+    raise RuntimeError(
+        "set_backend_to_cupy() has been removed. "
+        "Pass CuPy arrays directly to minimize_lbfgsb(); "
+        "the backend is inferred automatically."
+    )
 
 
-# The numpy wrapper
-def _np_cholesky_factorization(x):
-    """Wrapper around cholesky factorization that passes lower=True to cupy's cholesky."""
-    return cholesky(x, lower=True)
-
-
-def _np_errstate(*args, **kwargs):
-    return np.errstate(*args, **kwargs)
-
-
-_backend = {
-    "cholesky": _np_cholesky_factorization,
-    "errstate": _np_errstate,
-}
-
-
-# Public facing functions
-def cholesky_factorization(x):
-    return _backend["cholesky"](x)
-
-
-# Unused - currently linesearch uses tnp.errorstate
-def errorstate(*args, **kwargs):
-    return _backend["errstate"](*args, **kwargs)
-
-
-def set_backend_to_cupy():
-    """Convenience method to automatically configure prysm's backend to cupy."""
-
-    try:
-        import cupy as cp
-        import cupy.linalg as cla
-        import cupyx as cpx
-        import cupyx.scipy as csp
-        from cupy.linalg import cholesky as ccholesky
-
-    except ImportError:
-        warnings.warn("cupy not installed, backend remains numpy")
-        return
-
-    np._srcmodule = cp
-    sp._srcmodule = csp
-    la._srcmodule = cla
-
-    # Define the cupy wrapper
-    def _cp_cholesky_factorization(x):
-        """
-        Handling that cupy doesn't support lower=True, just uses by default
-        """
-        return ccholesky(x)
-
-    def _cp_errstate(*args, **kwargs):
-        return cpx.errstate(*args, **kwargs)
-
-    # modify the backend to use cupy's cholesky wrapper
-    _backend["cholesky"] = _cp_cholesky_factorization
-    _backend["errstate"] = _cp_errstate
-
-    return
-
-
-def set_backend_to_defaults():
-    """Convenience method to restore prysm's default backend options."""
-    np._srcmodule = _np
-    sp._srcmodule = _sp
-    optimize._srcmodule = _optimize
-    la._srcmodule = _la
-
-    # modify the backend to use cupy's cholesky wrapper
-    _backend["cholesky"] = _np_cholesky_factorization
-    _backend["errstate"] = _np_errstate
-
-    return
+def set_backend_to_defaults() -> None:
+    raise RuntimeError(
+        "set_backend_to_defaults() has been removed. "
+        "The backend is inferred automatically from your array types."
+    )

@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: BSD-3-Clause
-# Copyright (c) 2025 Antoine COLLET
+# Copyright (c) 2024-2026 Antoine COLLET
 
+import numpy as np
+import scipy as sp
 from lbfgsb import extract_hess_inv_diag, get_grad_projection_inf_norm
-from lbfgsb.mathops import np, sp
 from numpy.testing import assert_allclose
 from scipy.optimize import minimize
 

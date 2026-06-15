@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: BSD-3-Clause
-# Copyright (c) 2025 Antoine COLLET
+# Copyright (c) 2024-2026 Antoine COLLET
 
 import re
 from contextlib import nullcontext as does_not_raise
 
+import numpy as np
 import pytest
 from lbfgsb.benchmarks import rosenbrock, rosenbrock_grad
-from lbfgsb.mathops import np
 from lbfgsb.scalar_function import FD_METHODS, ScalarFunction, prepare_scalar_function
 
 
@@ -39,7 +39,7 @@ from lbfgsb.scalar_function import FD_METHODS, ScalarFunction, prepare_scalar_fu
 )
 def test_ScalarFunction(grad, exception) -> None:
     with exception:
-        ScalarFunction(rosenbrock, np.array([0.0, 5.0]), grad, 0.1, 0.1, 0.1)  # ty:ignore[invalid-argument-type]
+        ScalarFunction(rosenbrock, np.array([0.0, 5.0]), grad, 0.1, 0.1, 0.1)
 
 
 @pytest.mark.parametrize(

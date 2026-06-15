@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: BSD-3-Clause
-# Copyright (c) 2025 Antoine COLLET
+# Copyright (c) 2024-2026 Antoine COLLET
 
 """Test the benchmark functions and their gradients."""
 
 from typing import Callable
 
 import numdifftools as nd
+import numpy as np
 import pytest
 from lbfgsb import (
     ackley,
@@ -25,7 +26,6 @@ from lbfgsb import (
     styblinski_tang,
     styblinski_tang_grad,
 )
-from lbfgsb.mathops import np
 
 
 @pytest.mark.parametrize(

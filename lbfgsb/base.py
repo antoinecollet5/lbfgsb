@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: BSD-3-Clause
-# Copyright (c) 2025 Antoine COLLET
+# Copyright (c) 2024-2026 Antoine COLLET
 
 """
 Base functions used by the L-BFGS-B routine.
@@ -24,9 +24,10 @@ Functions
 import logging
 from typing import Optional, Sequence, Tuple
 
+# base.py uses numpy directly (index/bound ops always on numpy arrays)
+import numpy as np
 from numpy.typing import ArrayLike
 
-from lbfgsb.mathops import np
 from lbfgsb.types import NDArrayFloat
 
 

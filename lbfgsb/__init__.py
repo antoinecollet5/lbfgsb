@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: BSD-3-Clause
-# Copyright (c) 2025 Antoine COLLET
+# Copyright (c) 2024-2026 Antoine COLLET
 
 """
 This code is a python port of the famous implementation of Limited-memory
@@ -110,8 +110,17 @@ except ImportError:
             raise ImportError(message)
 
 
-from lbfgsb import base, bfgsmats, cauchy, linesearch, scalar_function, subspacemin
+from lbfgsb import (
+    backend,
+    base,
+    bfgsmats,
+    cauchy,
+    linesearch,
+    scalar_function,
+    subspacemin,
+)
 from lbfgsb.__about__ import __author__, __email__, __version__
+from lbfgsb.backend import Backend, get_backend, register_backend
 from lbfgsb.benchmarks import (
     ackley,
     ackley_grad,
@@ -130,6 +139,7 @@ from lbfgsb.benchmarks import (
     styblinski_tang,
     styblinski_tang_grad,
 )
+from lbfgsb.dcsrch import DcsrchState, dcsrch
 from lbfgsb.main import InternalState, minimize_lbfgsb
 from lbfgsb.utils import extract_hess_inv_diag, get_grad_projection_inf_norm
 
@@ -183,8 +193,14 @@ __all__ = [
     "sphere_grad",
     "styblinski_tang",
     "styblinski_tang_grad",
+    "backend",
     "base",
     "bfgsmats",
+    "get_backend",
+    "register_backend",
+    "Backend",
+    "DcsrchState",
+    "dcsrch",
     "cauchy",
     "linesearch",
     "scalar_function",

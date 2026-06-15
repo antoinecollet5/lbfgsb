@@ -1,15 +1,21 @@
 # SPDX-License-Identifier: BSD-3-Clause
-# Copyright (c) 2025 Antoine COLLET
+# Copyright (c) 2024-2026 Antoine COLLET
 
 import logging
 from typing import Callable, Optional, Tuple
 
+import numpy as np
 import pytest
+from lbfgsb.backend import get_backend
 from lbfgsb.base import get_bounds, is_any_inf
+from lbfgsb.dcsrch import DcsrchState, dcsrch
 from lbfgsb.linesearch import line_search, max_allowed_steplength
-from lbfgsb.mathops import np
 from lbfgsb.scalar_function import ScalarFunction
 from lbfgsb.types import NDArrayFloat
+
+# ---------------------------------------------------------------------------
+# max_allowed_steplength
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -63,9 +69,64 @@ def test_max_allowed_steplength(
     n_iter: int,
     expected: float,
 ) -> None:
+    nx = get_backend(x) if x.size > 0 else get_backend(np.array([0.0]))
     np.testing.assert_allclose(
-        max_allowed_steplength(x, d, lb, ub, max_steplength, n_iter), expected
+        max_allowed_steplength(nx, x, d, lb, ub, max_steplength, n_iter), expected
     )
+
+
+# ---------------------------------------------------------------------------
+# Pure-Python dcsrch smoke tests
+# ---------------------------------------------------------------------------
+
+
+def test_dcsrch_init() -> None:
+    """First call should return FG (request function/gradient evaluation)."""
+    state = DcsrchState()
+    stp, f, g, task = dcsrch(0.5, 1.0, -1.0, 1e-3, 0.9, 0.1, 0.0, 10.0, state)
+    assert task == "FG"
+    assert 0.0 < stp <= 10.0
+
+
+def test_dcsrch_error_bad_gradient() -> None:
+    """Non-negative initial gradient must return ERROR."""
+    state = DcsrchState()
+    _, _, _, task = dcsrch(0.5, 1.0, 0.5, 1e-3, 0.9, 0.1, 0.0, 10.0, state)
+    assert task == "ERROR"
+
+
+def test_dcsrch_convergence_quadratic() -> None:
+    """Iterate dcsrch on a simple quadratic until convergence."""
+
+    # f(x) = (x-3)^2,  g(x) = 2*(x-3),  start at x=0, direction d=1
+    # phi(stp) = (stp - 3)^2,  dphi(stp) = 2*(stp-3)
+    def phi(s):
+        return (s - 3.0) ** 2
+
+    def dphi(s):
+        return 2.0 * (s - 3.0)
+
+    state = DcsrchState()
+    stp = 1.0
+    f, g = phi(0.0), dphi(0.0)
+
+    for _ in range(50):
+        stp, f, g, task = dcsrch(stp, f, g, 1e-4, 0.9, 1e-6, 0.0, 10.0, state)
+        if task != "FG":
+            break
+        f = phi(stp)
+        g = dphi(stp)
+
+    assert task in ("CONV", "WARN"), f"Unexpected task: {task}"
+    # Strong Wolfe only guarantees sufficient decrease + curvature, not the
+    # exact minimiser. Verify the accepted step actually decreases phi.
+    assert phi(stp) < phi(0.0), f"phi({stp})={phi(stp)} >= phi(0)={phi(0.0)}"
+    assert stp > 0.0
+
+
+# ---------------------------------------------------------------------------
+# line_search integration helper
+# ---------------------------------------------------------------------------
 
 
 def standalone_linesearch(
@@ -74,123 +135,16 @@ def standalone_linesearch(
     grad: Callable,
     d: NDArrayFloat,
     bounds: Optional[NDArrayFloat] = None,
-    max_steplength_user: float = 1e-8,
+    max_steplength_user: float = 1e8,
     ftol: float = 1e-3,
     gtol: float = 0.9,
     xtol: float = 1e-1,
     max_iter: int = 30,
-    iprint: int = 10,
+    iprint: int = -1,
     logger: Optional[logging.Logger] = None,
 ) -> Tuple[Optional[float], int, int, float, float, NDArrayFloat]:
-    r"""
-    Find a step that satisfies both decrease condition and a curvature condition.
-
-        f(x0+stp*d) <= f(x0) + alpha*stp*\langle f'(x0),d\rangle,
-
-    and the curvature condition
-
-        abs(f'(x0+stp*d)) <= beta*abs(\langle f'(x0),d\rangle).
-
-    If alpha is less than beta and if, for example, the functionis bounded below, then
-    there is always a step which satisfies both conditions.
-
-    Note
-    ----
-    When using scipy-1.11 and below, this subroutine calls subroutine dcsrch from the
-    Minpack2 library to perform the line search.  Subroutine dscrch is safeguarded so
-    that all trial points lie within the feasible region. Otherwise, it uses the
-    python reimplementation introduced in scipy-1.12.
-
-    Parameters
-    ----------
-    x0 : NDArrayFloat
-        Starting point.
-    fun : Callable
-        Objective function.
-    grad : Callable
-        Gradient of the objective function.
-    bounds : sequence or `Bounds`, optional
-        Bounds on variables for Nelder-Mead, L-BFGS-B, TNC, SLSQP, Powell, and
-        trust-constr methods. There are two ways to specify the bounds:
-
-            1. Instance of `Bounds` class.
-            2. Sequence of ``(min, max)`` pairs for each element in `x`. None
-               is used to specify no bound.
-    d : NDArrayFloat
-        Search direction.
-    max_steplength : float
-        Maximum steplength allowed.
-    ftol: float, optional
-        Specify a nonnegative tolerance for the sufficient decrease condition in
-        `minpack2.dcsrch <https://ftp.mcs.anl.gov/pub/MINPACK-2/csrch/dcsrch.f>`_
-        (used for the line search). This is :math:`c_1` in
-        the Armijo condition (or Goldstein, Goldstein-Armijo condition) where
-        :math:`\alpha_{k}` is the estimated step.
-
-        .. math::
-
-            f(\mathbf{x}_{k}+\alpha_{k}\mathbf{p}_{k})\leq
-            f(\mathbf{x}_{k})+c_{1}\alpha_{k}\mathbf{p}_{k}^{\mathrm{T}}
-            \nabla f(\mathbf{x}_{k})
-
-        Note that :math:`0 < c_1 < 1`. Usually :math:`c_1` is small, see the Wolfe
-        conditions in :cite:t:`nocedalNumericalOptimization1999`.
-        In the fortran implementation
-        algo 778, it is hardcoded to 1e-3. The default is 1e-4.
-    gtol: float, optional
-        Specify a nonnegative tolerance for the curvature condition in
-        `minpack2.dcsrch <https://ftp.mcs.anl.gov/pub/MINPACK-2/csrch/dcsrch.f>`_
-        (used for the line search). This is :math:`c_2` in
-        the Armijo condition (or Goldstein, Goldstein-Armijo condition) where
-        :math:`\alpha_{k}` is the estimated step.
-
-        .. math::
-
-            \left|\mathbf{p}_{k}^{\mathrm {T}}\nabla f(\mathbf{x}_{k}+\alpha_{k}
-            \mathbf{p}_{k})\right|\leq c_{2}\left|\mathbf {p}_{k}^{\mathrm{T}}\nabla
-            f(\mathbf{x}_{k})\right|
-
-        Note that :math:`0 < c_1 < c_2 < 1`. Usually, :math:`c_2` is
-        much larger than :math:`c_2`.
-        see :cite:t:`nocedalNumericalOptimization1999`. In the fortran implementation
-        algo 778, it is hardcoded to 0.9. The default is 0.9.
-    xtol: float, optional
-        Specify a nonnegative relative tolerance for an acceptable step in the line
-        search procedure (see
-        `minpack2.dcsrch <https://ftp.mcs.anl.gov/pub/MINPACK-2/csrch/dcsrch.f>`_).
-        In the fortran implementation algo 778, it is hardcoded to 0.1.
-        The default is 1e-5.
-    max_iter : int, optional
-            Maximum number of linesearch iterations, by default 30.
-    iprint : int, optional
-        Controls the frequency of output. ``iprint < 0`` means no output;
-        ``iprint = 0``    print only one line at the last iteration;
-        ``0 < iprint < 99`` print also f and ``|proj g|`` every iprint iterations;
-        ``iprint >= 99``   print details of every iteration except n-vectors;
-    logger: Optional[Logger], optional
-        :class:`logging.Logger` instance. If None, nothing is displayed, no matter the
-        value of `iprint`, by default None.
-
-    Returns
-    -------
-    alpha : float or None
-        Alpha for which ``x_new = x0 + alpha * pk``,
-        or None if the line search algorithm did not converge.
-    fc : int
-        Number of function evaluations made.
-    gc : int
-        Number of gradient evaluations made.
-    new_fval : float or None
-        New function value ``f(x_new)=f(x0+alpha*pk)``,
-        or None if the line search algorithm did not converge.
-    old_fval : float
-        Old function value ``f(x0)``.
-    new_slope : float or None
-        The local slope along the search direction at the
-        new value ``<myfprime(x_new), pk>``,
-        or None if the line search algorithm did not converge.
-    """
     lb, ub = get_bounds(x0, bounds)
+    nx = get_backend(x0)
 
     sf = ScalarFunction(
         fun=fun,
@@ -211,6 +165,7 @@ def standalone_linesearch(
         ub=ub,
         is_boxed=not is_any_inf([lb, ub]),
         sf=sf,
+        nx=nx,
         above_iter=0,
         max_steplength_user=max_steplength_user,
         ftol=ftol,
@@ -227,24 +182,39 @@ def standalone_linesearch(
 
 
 def obj_func(x) -> float:
-    return (x[0]) ** 2 + (x[1]) ** 2
+    return float(x[0] ** 2 + x[1] ** 2)
 
 
 def obj_grad(x) -> NDArrayFloat:
-    return np.array([2 * x[0], 2 * x[1]])
+    return np.array([2.0 * x[0], 2.0 * x[1]])
 
 
 def test_standalone_linesearch() -> None:
     start_point = np.array([1.8, 1.7])
     search_gradient = np.array([-1.0, -1.0])
-    bounds = np.array([[-100.0, -100.0], [100.0, 100.0]]).T  # this is optional
+    bounds = np.array([[-100.0, -100.0], [100.0, 100.0]]).T
 
-    print(
-        standalone_linesearch(
-            x0=start_point,
-            fun=obj_func,
-            grad=obj_grad,
-            d=search_gradient,
-            bounds=bounds,
-        )
+    alpha, nfev, ngev, f_new, f_old, g_new = standalone_linesearch(
+        x0=start_point,
+        fun=obj_func,
+        grad=obj_grad,
+        d=search_gradient,
+        bounds=bounds,
     )
+    assert alpha is not None, "Line search should succeed"
+    assert f_new < f_old, "Line search should decrease function value"
+
+
+def test_standalone_linesearch_unbounded() -> None:
+    """Line search without bounds."""
+    start_point = np.array([5.0, 5.0])
+    d = np.array([-1.0, -1.0])
+
+    alpha, _, _, f_new, f_old, _ = standalone_linesearch(
+        x0=start_point,
+        fun=obj_func,
+        grad=obj_grad,
+        d=d,
+    )
+    assert alpha is not None
+    assert f_new < f_old

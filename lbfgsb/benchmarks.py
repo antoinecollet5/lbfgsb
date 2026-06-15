@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: BSD-3-Clause
-# Copyright (c) 2025 Antoine COLLET
+# Copyright (c) 2024-2026 Antoine COLLET
 
 """
 Provide the following benchmark functions and their gradients.
@@ -12,7 +12,8 @@ Provide the following benchmark functions and their gradients.
 - styblinski_tang
 """
 
-from lbfgsb.mathops import np
+import numpy as np
+
 from lbfgsb.types import NDArrayFloat
 
 

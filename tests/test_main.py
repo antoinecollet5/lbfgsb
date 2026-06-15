@@ -1,15 +1,15 @@
 # SPDX-License-Identifier: BSD-3-Clause
-# Copyright (c) 2025 Antoine COLLET
+# Copyright (c) 2024-2026 Antoine COLLET
 
 import copy
 import logging
 import re
 from typing import Deque
 
+import numpy as np
 import pytest
 from lbfgsb import InternalState, minimize_lbfgsb
 from lbfgsb.main import is_f0_target_reached
-from lbfgsb.mathops import np
 from lbfgsb.types import NDArrayFloat
 from scipy.optimize import (
     LbfgsInvHessProduct,  # noqa : F401

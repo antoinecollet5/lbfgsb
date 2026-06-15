@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: BSD-3-Clause
-# Copyright (c) 2025 Antoine COLLET
+# Copyright (c) 2024-2026 Antoine COLLET
 
 """
 An *implicit* representation of the BFGS approximation to the Hessian matrix B
@@ -36,8 +36,10 @@ import logging
 from collections import deque
 from typing import Deque, Optional, Tuple
 
+import numpy as np  # real numpy — LBFGSB_MATRICES stores numpy arrays internally
+
 from lbfgsb._numba_helpers import njit
-from lbfgsb.mathops import cholesky_factorization, np, sp
+from lbfgsb.backend import Backend, get_backend
 from lbfgsb.types import NDArrayFloat
 
 
@@ -94,7 +96,9 @@ class LBFGSB_MATRICES:
 
 
 def bmv(
-    invMfactors: Tuple[NDArrayFloat, NDArrayFloat], v: NDArrayFloat
+    invMfactors: Tuple[NDArrayFloat, NDArrayFloat],
+    v: NDArrayFloat,
+    nx: Optional[Backend] = None,
 ) -> NDArrayFloat:
     """
     Return the product of the 2m x 2m middle matrix with a vector v.
@@ -116,13 +120,13 @@ def bmv(
     """
     # PART I: solve [  D^(1/2)      O ] [ p1 ] = [ v1 ]
     #               [ -L*D^(-1/2)   J ] [ p2 ]   [ v2 ].
-    # sp.linalg.solve_triangular(invMfactors[0], v, lower=True)
     # PART II: solve [ -D^(1/2)   D^(-1/2)*L'  ] [ p1 ] = [ p1 ]
     #                [  0         J'           ] [ p2 ]   [ p2 ].
-    return sp.linalg.solve_triangular(
+    if nx is None:
+        nx = get_backend(v)
+    return nx.solve_triangular_u(
         invMfactors[1],
-        sp.linalg.solve_triangular(invMfactors[0], v, lower=True),
-        lower=False,
+        nx.solve_triangular_l(invMfactors[0], v),
     )
 
 
@@ -153,7 +157,9 @@ def bmv_numba(L: NDArrayFloat, U: NDArrayFloat, v: NDArrayFloat) -> NDArrayFloat
     return p
 
 
-def form_invMfactors(theta, STS, L, D) -> Tuple[NDArrayFloat, NDArrayFloat]:
+def form_invMfactors(
+    theta, STS, L, D, nx: Optional[Backend] = None
+) -> Tuple[NDArrayFloat, NDArrayFloat]:
     r"""
     Return upper triangle of the cholesky factorization of the inverse of M_k.
 
@@ -181,38 +187,42 @@ def form_invMfactors(theta, STS, L, D) -> Tuple[NDArrayFloat, NDArrayFloat]:
 
     REF: see algo 3.2 in :cite:t:`byrdRepresentationsQuasiNewtonMatrices1994`.
     """
-    invD = np.zeros_like(D)
-    # Add 1/D on diagonal
-    invD.flat[:: D.shape[0] + 1] = 1 / np.diag(D)
+    if nx is None:
+        nx = get_backend(D)
+
+    invD = nx.zeros_like(D)
+    # Add 1/D on diagonal — use set_item for JAX compatibility
+    diag_vals = 1.0 / nx.diag(D)
+    for i in range(D.shape[0]):
+        invD = nx.set_item(invD, (i, i), diag_vals[i])
 
     # Cholesky factorization
-    J = cholesky_factorization(theta * STS + L @ invD @ L.T)
+    J = nx.cholesky_lower(theta * STS + L @ invD @ L.T)
 
     m = D.shape[0]
     dtype = D.dtype
 
-    sqrtD = np.sqrt(D)
-    sqrtInvD = np.sqrt(invD)
+    sqrtD = nx.sqrt(D)
+    sqrtInvD = nx.sqrt(invD)
 
     # Precompute products
     L_sqrtInvD = L @ sqrtInvD  # (m, m)
     sqrtInvD_LT = sqrtInvD @ L.T  # (m, m)
 
-    L = np.zeros((2 * m, 2 * m), dtype=dtype)
-    U = np.zeros((2 * m, 2 * m), dtype=dtype)
+    L_out = nx.zeros((2 * m, 2 * m), dtype=dtype)
+    U_out = nx.zeros((2 * m, 2 * m), dtype=dtype)
 
     # -------- Lower matrix --------
-    L[:m, :m] = sqrtD
-    L[m:, :m] = -L_sqrtInvD
-    L[m:, m:] = J
+    L_out = nx.set_item(L_out, (slice(None, m), slice(None, m)), sqrtD)
+    L_out = nx.set_item(L_out, (slice(m, None), slice(None, m)), -L_sqrtInvD)
+    L_out = nx.set_item(L_out, (slice(m, None), slice(m, None)), J)
 
     # -------- Upper matrix --------
-    U[:m, :m] = -sqrtD
-    U[:m, m:] = sqrtInvD_LT
-    U[m:, m:] = J.T
+    U_out = nx.set_item(U_out, (slice(None, m), slice(None, m)), -sqrtD)
+    U_out = nx.set_item(U_out, (slice(None, m), slice(m, None)), sqrtInvD_LT)
+    U_out = nx.set_item(U_out, (slice(m, None), slice(m, None)), J.T)
 
-    # Note we form the upper triangle and then transpose it to get the lower one
-    return L, U
+    return L_out, U_out
 
 
 def update_lbfgs_matrices(
@@ -300,8 +310,8 @@ def update_lbfgs_matrices(
         # the n x m correction matrices
 
         # 1) Update theta
-        sk = X[-1] - X[-2]
-        yk = G[-1] - G[-2]
+        sk = np.asarray(X[-1]) - np.asarray(X[-2])
+        yk = np.asarray(G[-1]) - np.asarray(G[-2])
         # sk = X[-1] - X[-2]
         sTy = sk @ yk
         yTy = yk @ yk
@@ -310,10 +320,15 @@ def update_lbfgs_matrices(
         m = len(X) - 1
         n = np.size(X[-1])
 
+        # Convert deque of backend arrays -> numpy for S/Y storage
+        # (sk, yk are small m×n matrices; always stored as numpy regardless of backend)
+        X_np = np.array([np.asarray(xi) for xi in X])
+        G_np = np.array([np.asarray(gi) for gi in G])
+
         # Update the lbfgsb matrices
         if is_force_update:
-            mats.S = np.diff(np.array(X), axis=0).T  # shape (n, m)
-            mats.Y = np.diff(np.array(G), axis=0).T  # shape (n ,m)
+            mats.S = np.diff(X_np, axis=0).T  # shape (n, m)
+            mats.Y = np.diff(G_np, axis=0).T  # shape (n ,m)
         else:
             if np.shape(mats.S)[1] == m:
                 # shift left

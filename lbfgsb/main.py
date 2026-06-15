@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: BSD-3-Clause
-# Copyright (c) 2025 Antoine COLLET
+# Copyright (c) 2024-2026 Antoine COLLET
 
 """
 This code is a python port of the famous implementation of Limited-memory
@@ -42,9 +42,9 @@ import logging
 import warnings
 from collections import deque
 from dataclasses import dataclass
-from typing import Callable, Deque, Optional, Tuple, Union
+from typing import Any, Callable, Deque, Optional, Tuple, Union
 
-import numpy as tnp
+import numpy as _np  # real numpy for OptimizeResult and numpy-only helpers
 from numpy.typing import ArrayLike
 from scipy.optimize import (
     LbfgsInvHessProduct,  # noqa : F401
@@ -52,6 +52,7 @@ from scipy.optimize import (
 )
 
 from lbfgsb._numba_helpers import NUMBA_AVAILABLE
+from lbfgsb.backend import Backend, get_backend
 from lbfgsb.base import (
     clip2bounds,
     count_var_at_bounds,
@@ -69,7 +70,6 @@ from lbfgsb.bfgsmats import (
 )
 from lbfgsb.cauchy import get_cauchy_point
 from lbfgsb.linesearch import line_search
-from lbfgsb.mathops import np, sp
 from lbfgsb.scalar_function import (
     JacOption,
     Objective,
@@ -81,33 +81,13 @@ from lbfgsb.subspacemin import get_freev, subspace_minimization
 from lbfgsb.types import NDArrayFloat
 
 
-def _asnumpy(X):
-    """Convert CuPy array to NumPy array if needed.
+def _asnumpy(X: Any, nx: Backend) -> _np.ndarray:
+    """Convert a deque or array to a plain NumPy array via the active backend."""
+    from collections import deque as _Deque
 
-    CuPy arrays cannot be implicitly converted to NumPy arrays via np.array().
-    Instead, use .get() to explicitly convert CuPy arrays to NumPy arrays.
-
-    For deques (which store CuPy arrays), convert each element individually.
-
-    AI Disclosure:
-        this function was largely written by qwen3.5 while debugging the cupy backend
-    """
-    from collections import deque as Deque
-
-    # If X is a deque, convert each element to ensure it's a NumPy array
-    if isinstance(X, Deque):
-        # Convert deque of CuPy arrays to NumPy array
-        # First, convert each CuPy array element to NumPy
-        X_list = [x.get() if hasattr(x, "get") else x for x in X]
-        # Convert list of NumPy arrays to NumPy array
-        return tnp.asarray(X_list)
-
-    # For arrays, check if it's a CuPy array and convert
-    # CuPy arrays have .get() method to convert to NumPy
-    if hasattr(X, "get"):
-        return X.get()
-    # If not a CuPy array or NumPy array, assume it's already NumPy
-    return X
+    if isinstance(X, _Deque):
+        return _np.asarray([nx.to_numpy(x) for x in X])
+    return nx.to_numpy(X)
 
 
 @dataclass
@@ -610,22 +590,36 @@ def minimize_lbfgsb(
         )
         is_use_numba_jit = False
 
+    # --- Backend auto-detection -------------------------------------------
+    # Infer the backend from x0 (CuPy, JAX, or NumPy).
+    # If numba JIT is requested, upgrade to NumbaBackend explicitly.
+    import numpy as _np_real
+
+    _x0_np = _np_real.asarray(x0) if isinstance(x0, (list, tuple)) else x0
+    nx = get_backend(_x0_np)
+    if is_use_numba_jit:
+        from lbfgsb.backend import get_numba_backend
+
+        nx = get_numba_backend()
+    # -----------------------------------------------------------------------
+
     lb, ub = get_bounds(x0, bounds)
     max_steplength_user: float = copy.copy(max_steplength)
 
-    # True if all values have lower and upper bounds
     is_boxed: bool = not is_any_inf([lb, ub])
 
-    # applying the bounds to the initial guess x0
     n = x0.size
     x = clip2bounds(x0, lb, ub)
 
-    # Some display about the problem at hand. The display depends on the value of iprint
     display_start(
-        np.finfo(float).eps, n, maxcor, count_var_at_bounds(x, lb, ub), iprint
+        float(_np_real.finfo(float).eps),
+        n,
+        maxcor,
+        count_var_at_bounds(x, lb, ub),
+        iprint,
     )
 
-    X, G = initialize_X_and_G(x, checkpoint, maxcor)
+    X, G = initialize_X_and_G(x, checkpoint, maxcor, nx=nx)
 
     # Initialization of the matrices
     mats = LBFGSB_MATRICES(n)
@@ -679,7 +673,7 @@ def minimize_lbfgsb(
         if checkpoint is None:
             if len(X) == 0:
                 X.append(x)
-                G.append(np.zeros_like(x))
+                G.append(nx.zeros_like(x))
             return OptimizeResult(
                 fun=f0,
                 jac=G[0],
@@ -691,7 +685,8 @@ def minimize_lbfgsb(
                 x=x,
                 success=istate.is_success,
                 hess_inv=LbfgsInvHessProduct(
-                    np.diff(np.array(X), axis=0), np.diff(np.array(G), axis=0)
+                    _np.diff(_np.array([nx.to_numpy(a) for a in X]), axis=0),
+                    _np.diff(_np.array([nx.to_numpy(a) for a in G]), axis=0),
                 ),
             )
         else:
@@ -727,11 +722,11 @@ def minimize_lbfgsb(
         )
     else:
         # Store first res to X and G
-        X.append(np.copy(x))
+        X.append(nx.copy(x))
         G.append(grad)
 
     # For now the free variables at the cauchy points is an empty set
-    free_vars = np.array([], dtype=np.int_)
+    free_vars = _np.array([], dtype=_np.int_)
 
     # Check the infinity norm of the projected gradient
     sbgnrm = projgr(x, grad, lb, ub)
@@ -757,7 +752,15 @@ def minimize_lbfgsb(
 
         # find cauchy point
         x_cp, c = get_cauchy_point(
-            x, grad, lb, ub, mats, iprint, logger, is_use_numba_jit=is_use_numba_jit
+            x,
+            grad,
+            lb,
+            ub,
+            mats,
+            iprint,
+            logger,
+            nx=nx,
+            is_use_numba_jit=is_use_numba_jit,
         )
 
         # Get the free variables for the GCP
@@ -777,6 +780,7 @@ def minimize_lbfgsb(
             lb,
             ub,
             mats,
+            nx=nx,
             is_check_factorizations=is_check_factorizations,
             is_use_numba_jit=is_use_numba_jit,
         )
@@ -793,14 +797,13 @@ def minimize_lbfgsb(
             max_steplength_user,
             is_boxed,
             sf,
-            ftol_linesearch,
-            gtol_linesearch,
-            xtol_linesearch,
-            # The maximum number of function evaluation in linesearch must take into
-            # account maxfun and the number of call already performed.
-            min(maxls, maxfun - sf.nfev),
-            iprint,
-            logger,
+            nx=nx,
+            ftol=ftol_linesearch,
+            gtol=gtol_linesearch,
+            xtol=xtol_linesearch,
+            max_iter=min(maxls, maxfun - sf.nfev),
+            iprint=iprint,
+            logger=logger,
             is_use_numba_jit=is_use_numba_jit,
         )
         if steplength is None:
@@ -869,7 +872,7 @@ def minimize_lbfgsb(
             # reached (istate.is_success)
             if callback is not None and not istate.is_success:
                 if callback(
-                    np.copy(x),
+                    nx.copy(x),
                     OptimizeResult(
                         fun=f0,
                         jac=grad,
@@ -881,8 +884,8 @@ def minimize_lbfgsb(
                         x=x,
                         success=istate.is_success,
                         hess_inv=LbfgsInvHessProduct(
-                            np.atleast_2d(np.diff(_asnumpy(X), axis=0)),
-                            np.atleast_2d(np.diff(_asnumpy(G), axis=0)),
+                            _np.atleast_2d(_np.diff(_asnumpy(X, nx), axis=0)),
+                            _np.atleast_2d(_np.diff(_asnumpy(G, nx), axis=0)),
                         ),
                     ),
                 ):
@@ -930,14 +933,17 @@ def minimize_lbfgsb(
         x=x,
         success=istate.is_success,
         hess_inv=LbfgsInvHessProduct(
-            np.atleast_2d(np.diff(_asnumpy(X), axis=0)),
-            np.atleast_2d(np.diff(_asnumpy(G), axis=0)),
+            _np.atleast_2d(_np.diff(_asnumpy(X, nx), axis=0)),
+            _np.atleast_2d(_np.diff(_asnumpy(G, nx), axis=0)),
         ),
     )
 
 
 def initialize_X_and_G(
-    x: NDArrayFloat, checkpoint: Optional[OptimizeResult], maxcor: int
+    x: NDArrayFloat,
+    checkpoint: Optional[OptimizeResult],
+    maxcor: int,
+    nx: Optional[Backend] = None,
 ) -> Tuple[Deque[NDArrayFloat], Deque[NDArrayFloat]]:
     """
     Initialize the sequence of adjusted values and associated gradients.
@@ -963,6 +969,10 @@ def initialize_X_and_G(
     # Initialize X and G
     # Deque = similar to list but with faster operations to remove and add
     # values to extremities
+    if nx is None:
+        from lbfgsb.backend import get_backend as _get_backend
+
+        nx = _get_backend(x)
     X: Deque[NDArrayFloat] = deque()
     G: Deque[NDArrayFloat] = deque()
 
@@ -974,7 +984,7 @@ def initialize_X_and_G(
 
     # x0 and checkpoint.x should be the same otherwisee there is an issue
     try:
-        np.testing.assert_equal(x, checkpoint.x)
+        _np.testing.assert_equal(nx.to_numpy(x), nx.to_numpy(checkpoint.x))
     except AssertionError as e:
         raise ValueError(
             "When 'checkpoint' is provided (L-BFGS-B restart), x0 and checkpoint.x"
@@ -991,8 +1001,8 @@ def initialize_X_and_G(
         )
     # restore the past X and G
     for x, g in zip(
-        checkpoint.x - np.cumsum(checkpoint.hess_inv.sk, axis=0),
-        checkpoint.jac - np.cumsum(checkpoint.hess_inv.yk, axis=0),
+        checkpoint.x - _np.cumsum(checkpoint.hess_inv.sk, axis=0),
+        checkpoint.jac - _np.cumsum(checkpoint.hess_inv.yk, axis=0),
     ):
         if len(X) > maxcor:
             X.popleft()

@@ -1,331 +1,283 @@
 """
 Benchmark with multiple benchmark functions.
 
-This benchmark evaluates the performance of L-BFGS-B with CuPy backend
-compared to NumPy backend and SciPy's L-BFGS-B implementation.
+This benchmark evaluates the performance of L-BFGS-B across backends
+(NumPy, NumPy+Numba, CuPy, SciPy) compared across multiple problem sizes.
 
-The benchmark includes error bar plotting to show standard deviation across
-multiple trials, and supports configurable problem sizes and number of trials.
+Backends are selected automatically from the array type passed to
+``minimize_lbfgsb`` — no global ``set_backend_to_*`` call is needed.
+Pass a CuPy array as ``x0`` and the solver uses the GPU; pass a NumPy
+array and it uses the CPU.
 
 AI Disclosure
-    This benchmark used qwen3.5, an open-weights AI model, to generate the plotting
-    component of this code, linting, and clean up the docstrings.
+    Originally generated with qwen3.5 assistance; updated to the new
+    POT-style backend API (``get_backend`` / auto-detection).
 """
 
+from __future__ import annotations
+
 from time import perf_counter
+from typing import Callable, Optional
 
 import matplotlib.pyplot as plt
-import numpy as tnp
+import numpy as np
 from lbfgsb import minimize_lbfgsb
-from lbfgsb.mathops import np, set_backend_to_cupy, set_backend_to_defaults
+from lbfgsb.backend import get_backend
 from scipy.optimize import minimize
 
 # =======================================================================
 # CONFIGURATION
 # =======================================================================
 
-# Number of trials for each benchmark run (use 5 for stable results)
-NTRIALS = 1
-
-# Problem sizes (dimensions) to test
-# For CuPy: use powers of 2 for optimal GPU memory alignment
-# For NumPy: use various sizes to capture performance characteristics
-problem_sizes = [2**i for i in range(16, 21)]
-
-# Optimization tolerances
-FTOL = 1e-5  # Function tolerance
-GTOL = 1e-5  # Gradient tolerance
-MAXCOR = 10  # Maximum correlation
-MAXITER = 20_000  # Maximum iterations
-
-# Number of function evaluations limit
+NTRIALS = 3  # trials per (backend, problem_size) cell
+FTOL = 1e-5
+GTOL = 1e-5
+MAXCOR = 10
+MAXITER = 20_000
 MAXFUN = 20_000
 
-# =======================================================================
-# HELPER FUNCTIONS
-# =======================================================================
+problem_sizes = [2**i for i in range(16, 21)]
 
-
-def get_bounds(problem_size):
-    """Added by qwen3.5
-    Generate uniform bounds for the benchmark problem using CuPy.
-
-    Parameters
-    ----------
-    problem_size : int
-        Number of dimensions.
-
-    Returns
-    -------
-    tuple
-        (lower_bounds, upper_bounds) CuPy arrays.
-    """
-    lb = np.full(problem_size, -5.0)
-    ub = np.full(problem_size, 5.0)
-    return lb, ub
-
-
-def get_function_label(label):
-    """Added by qwen3.5
-    Get a formatted label for the plot.
-
-    Parameters
-    ----------
-    label : str
-        Function name.
-
-    Returns
-    -------
-    str
-        Formatted label string.
-    """
-    return f"{label.capitalize()} function"  # noqa: E702
-
+# Backends to benchmark; skip "cupy" automatically when not installed.
+ALL_BACKENDS = ["numpy+numba", "cupy", "scipy"]
 
 # =======================================================================
-# MAIN BENCHMARK EXECUTION
+# PROBLEM DEFINITIONS
+# All functions accept either NumPy or CuPy arrays transparently via
+# get_backend() — no explicit conversion needed.
 # =======================================================================
 
 
-def run_function_benchmark(
-    problem_size,
-    fun,
-    jac,
-    bounds,
-    actual_backend,
-):
-    """
-    Run benchmark for a single function.
-
-    Parameters
-    ----------
-    problem_size : int
-        Number of dimensions.
-    fun : callable
-        Objective function.
-    jac : callable
-        Gradient function.
-    bounds : numpy.ndarray
-        Bounds array.
-    actual_backend : str
-        'numpy', 'cupy', 'scipy'.
-
-    Returns
-    -------
-    tuple
-        (lbfgsb_times, scipy_times, lbfgsb_errors, scipy_errors)
-    """
-    times_lbfgsb_trial = []
-    times_scipy_trial = []
-
-    assert actual_backend in ["numpy", "cupy", "scipy"], (
-        f"Invalid backend: {actual_backend}"
+def rosenbrock(x):
+    nx = get_backend(x)
+    _ = nx  # used only for type inference; arithmetic uses __add__ etc.
+    return float(
+        100.0 * ((x[1:] - x[:-1] ** 2.0) ** 2.0).sum() + ((1.0 - x[:-1]) ** 2.0).sum()
     )
 
-    # Whether to grab the raw CuPy/CUDA arrays or convert to NumPy
-    if actual_backend == "cupy":
-        test_fun = fun
-        test_jac = jac
-        x0 = np.random.random(problem_size) * 10 - 5
-        x0 = np.clip(x0, -5.0, 5.0).reshape(-1)
+
+def rosenbrock_grad(x):
+    nx = get_backend(x)
+    g = nx.zeros_like(x)
+    g = nx.set_item(g, slice(1, None), g[1:] + 100.0 * 2.0 * (x[1:] - x[:-1] ** 2.0))
+    g = nx.set_item(
+        g,
+        slice(None, -1),
+        g[:-1]
+        + 100.0 * (-4.0 * x[1:] * x[:-1] + 4.0 * x[:-1] ** 3.0)
+        + 2.0 * (x[:-1] - 1.0),
+    )
+    return g
+
+
+# =======================================================================
+# BENCHMARK HELPERS
+# =======================================================================
+
+
+def _make_x0(problem_size: int, backend: str):
+    """Return an initial guess in the correct array type for *backend*."""
+    x0_np = np.clip(np.random.uniform(-5.0, 5.0, problem_size), -5.0, 5.0)
+
+    if backend == "cupy":
+        import cupy as cp
+
+        return cp.asarray(x0_np)
+    # numpy, numpy+numba, scipy — all use plain numpy
+    return x0_np
+
+
+def _make_bounds(problem_size: int, backend: str):
+    """Return a (n, 2) bounds array in the format expected by minimize_lbfgsb."""
+    lb = np.full(problem_size, -5.0)
+    ub = np.full(problem_size, 5.0)
+    # bounds must always be numpy for scipy; minimize_lbfgsb accepts numpy too
+    # (the solver clips x0 at entry; bounds themselves are never put on GPU)
+    return np.column_stack([lb, ub])
+
+
+def _run_once(
+    backend: str,
+    problem_size: int,
+    fun: Callable,
+    jac: Callable,
+) -> tuple[float, bool]:
+    """Run one trial; return (wall_time_seconds, success)."""
+    x0 = _make_x0(problem_size, backend)
+    bounds = _make_bounds(problem_size, backend)
+
+    t0 = perf_counter()
+
+    if backend == "scipy":
+        result = minimize(
+            x0=x0,
+            fun=lambda x: float(fun(x)),
+            jac=lambda x: np.asarray(jac(x)),
+            bounds=bounds,
+            method="L-BFGS-B",
+            options={
+                "maxiter": MAXITER,
+                "ftol": FTOL,
+                "gtol": GTOL,
+                "iprint": -1,
+                "maxcor": MAXCOR,
+            },
+        )
     else:
-        test_fun = lambda x, f=fun: f(x).get() if hasattr(f(x), "get") else f(x)
-        test_jac = lambda x, g=jac: g(x).get() if hasattr(g(x), "get") else g(x)
-        x0 = tnp.random.random(problem_size) * 10 - 5
-        x0 = tnp.clip(x0, -5.0, 5.0).reshape(-1)
+        result = minimize_lbfgsb(
+            x0=x0,
+            fun=fun,
+            jac=jac,
+            bounds=bounds,
+            maxcor=MAXCOR,
+            ftol=FTOL,
+            gtol=GTOL,
+            iprint=-1,
+            maxiter=MAXITER,
+            maxfun=MAXFUN,
+            is_use_numba_jit=(backend == "numpy+numba"),
+        )
 
-    for trial in range(NTRIALS):
-        # Reset initial guess within bounds [-5, 5]
-
-        # Run L-BFGS-B
-        print(f"    Trial {trial + 1}/{NTRIALS}... for backend {actual_backend}")
-        t1 = perf_counter()
-        if actual_backend != "scipy":
-            opt_result = minimize_lbfgsb(
-                x0=x0,
-                fun=test_fun,
-                jac=test_jac,
-                bounds=bounds,
-                maxcor=MAXCOR,
-                ftol=FTOL,
-                gtol=GTOL,
-                iprint=0,
-                maxiter=MAXITER,
-                maxfun=MAXFUN,
-            )
-
-        else:
-            opt_result = minimize(
-                x0=x0,
-                fun=test_fun,
-                jac=test_jac,
-                bounds=bounds,
-                method="L-BFGS-B",
-                options={
-                    "maxiter": MAXITER,
-                    "ftol": FTOL,
-                    "gtol": GTOL,
-                    "iprint": 0,
-                    "maxcor": MAXCOR,
-                },
-            )
-        t2 = perf_counter()
-        times_lbfgsb_trial.append(t2 - t1)
-        print(f"    L-BFGS-B time: {times_lbfgsb_trial[-1]:.4f}s")
-        print(f"    Success: {opt_result.success}")
-
-        # Run SciPy's L-BFGS-B for comparison
-        print(f"    Running SciPy L-BFGS-B optimization...")
-
-    # Calculate mean and std
-    lbfgsb_times = tnp.mean(times_lbfgsb_trial)
-    lbfgsb_errors = tnp.std(times_lbfgsb_trial)
-
-    return lbfgsb_times, lbfgsb_errors
+    wall = perf_counter() - t0
+    return wall, bool(result.success)
 
 
-def benchmark_lbfgsb(fun, jac):
+def benchmark(
+    fun: Callable,
+    jac: Callable,
+    backends: Optional[list[str]] = None,
+) -> dict[str, dict[str, list[float]]]:
     """
-    Run the benchmark for a specific backend.
-
-    Parameters
-    ----------
-    fun : callable
-        Objective function to minimize.
-    jac : callable
-        Gradient of the objective function.
+    Run the full benchmark matrix.
 
     Returns
     -------
     dict
-        Dictionary with times and errors for the benchmark.
+        ``results[backend]["times"]``  — list of mean times per problem size
+        ``results[backend]["errors"]`` — list of std times per problem size
     """
+    if backends is None:
+        backends = ALL_BACKENDS
 
-    # Track backend being used
-    actual_backend = np.__name__
+    # Filter out unavailable backends
+    available: list[str] = []
+    for b in backends:
+        if b == "cupy":
+            try:
+                import cupy  # noqa: F401
 
-    # Prepare figure for plotting
-    fig, axes = plt.subplots(
-        ncols=1,
-        nrows=1,
-        figsize=(8, 6),
-        constrained_layout=True,
-    )
-    print("\n" + "=" * 70)
-    print(f"{actual_backend.upper()} Backend Benchmark")
-    print("=" * 70)
+                available.append(b)
+            except ImportError:
+                print("  [skip] cupy not installed")
+        elif b == "numpy+numba":
+            try:
+                import numba  # noqa: F401
 
-    # Results storage
-    for actual_backend in ["cupy", "scipy", "numpy"]:
-        # Technically, this changes the objective function as well.
-        # Maybe we should make a cupy-only version of the benchmark.
-        if actual_backend == "cupy":
-            set_backend_to_cupy()
+                available.append(b)
+            except ImportError:
+                print("  [skip] numba not installed")
         else:
-            set_backend_to_defaults()
+            available.append(b)
 
-        times_lbfgsb = []
-        errors_lbfgsb = []
+    results: dict[str, dict[str, list[float]]] = {}
 
-        for PROBLEM_SIZE in problem_sizes:
-            print(f"\nProblem size: {PROBLEM_SIZE} dimensions")
+    for backend in available:
+        print(f"\n{'=' * 60}")
+        print(f"Backend: {backend.upper()}")
+        print(f"{'=' * 60}")
+        times_mean: list[float] = []
+        times_std: list[float] = []
 
-            # Get bounds for the current problem
-            lb, ub = get_bounds(PROBLEM_SIZE)
+        for size in problem_sizes:
+            trial_times: list[float] = []
+            print(f"  size={size:>7d}  ", end="", flush=True)
 
-            # Convert to NumPy array explicitly for SciPy comparison
-            bounds = tnp.asarray(
-                (
-                    lb.get() if hasattr(lb, "get") else lb,
-                    ub.get() if hasattr(ub, "get") else ub,
-                )
-            ).T
+            for t in range(NTRIALS):
+                wall, ok = _run_once(backend, size, fun, jac)
+                trial_times.append(wall)
+                status = "✓" if ok else "✗"
+                print(f"[{status} {wall:.3f}s]", end=" ", flush=True)
 
-            lbfgsb_time, lbfgsb_error = run_function_benchmark(
-                PROBLEM_SIZE,
-                fun,
-                jac,
-                bounds,
-                actual_backend,
-            )
-            times_lbfgsb.append(lbfgsb_time)
-            errors_lbfgsb.append(lbfgsb_error)
+            mu = float(np.mean(trial_times))
+            std = float(np.std(trial_times))
+            times_mean.append(mu)
+            times_std.append(std)
+            print(f"→ {mu:.3f}±{std:.3f}s")
 
-        # Plot for this function
-        axes.errorbar(
-            problem_sizes,
-            times_lbfgsb,
-            yerr=errors_lbfgsb,
-            fmt="-o",
-            label=f"L-BFGS-B ({actual_backend})",
-            capsize=5,
-            ecolor="black",
+        results[backend] = {"times": times_mean, "errors": times_std}
+
+    return results
+
+
+# =======================================================================
+# PLOTTING
+# =======================================================================
+
+_STYLES: dict[str, dict] = {
+    "numpy": {"fmt": "-o", "color": "steelblue", "label": "lbfgsb (numpy)"},
+    "numpy+numba": {
+        "fmt": "-s",
+        "color": "darkorange",
+        "label": "lbfgsb (numpy+numba)",
+    },
+    "cupy": {"fmt": "-^", "color": "green", "label": "lbfgsb (cupy)"},
+    "scipy": {"fmt": "--D", "color": "firebrick", "label": "scipy L-BFGS-B"},
+}
+
+
+def plot_results(
+    results: dict[str, dict[str, list[float]]],
+    title: str = "L-BFGS-B Backend Benchmark (Rosenbrock)",
+    outfile: str = "benchmark_comparison_rosenbrock.png",
+) -> None:
+    """Plot mean ± std wall-clock time vs problem size for every backend."""
+    fig, ax = plt.subplots(figsize=(9, 6), constrained_layout=True)
+
+    for backend, data in results.items():
+        style = _STYLES.get(backend, {"fmt": "-o", "color": "grey", "label": backend})
+        ax.errorbar(
+            problem_sizes[: len(data["times"])],
+            data["times"],
+            yerr=data["errors"],
+            fmt=style["fmt"],
+            color=style["color"],
+            label=style["label"],
+            capsize=4,
             linewidth=2,
+            markersize=6,
         )
 
-    # Plotting preferences
-    axes.set_xscale("log")
-    axes.set_yscale("log")
-    axes.set_xlabel("Problem size (dimensions)", fontsize=12)
-    axes.set_ylabel("Time (s) - mean ± std (log scale)", fontsize=12)
-    axes.legend(loc="best", fontsize=10)
-    axes.grid(True, which="both", linestyle="--", alpha=0.7)
+    ax.set_xscale("log", base=2)
+    ax.set_yscale("log")
+    ax.set_xlabel("Problem size (n)", fontsize=12)
+    ax.set_ylabel("Wall time (s)  —  mean ± std", fontsize=12)
+    ax.set_title(title, fontsize=14, fontweight="bold")
+    ax.legend(fontsize=10)
+    ax.grid(True, which="both", linestyle="--", alpha=0.5)
 
-    plt.suptitle(
-        "Rosenbrock L-BFGS-B Benchmark",
-        fontsize=16,
-        fontweight="bold",
-        y=1.02,
+    # Annotate NTRIALS
+    ax.text(
+        0.02,
+        0.02,
+        f"trials per cell: {NTRIALS}  |  ftol={FTOL}  gtol={GTOL}",
+        transform=ax.transAxes,
+        fontsize=8,
+        color="grey",
     )
 
-    # Save plot
-    plt.savefig(
-        f"benchmark_comparison_rosenbrock.png",
-        dpi=300,
-        bbox_inches="tight",
-    )
-    print(f"\nResults saved to 'benchmark_comparison_rosenbrock.png'")
+    fig.savefig(outfile, dpi=150, bbox_inches="tight")
+    print(f"\nFigure saved → {outfile}")
+    plt.show()
 
-    return
 
+# =======================================================================
+# ENTRY POINT
+# =======================================================================
 
 if __name__ == "__main__":
-    # Check if CuPy is available
-    try:
-        import cupy as cp
+    print("L-BFGS-B backend benchmark")
+    print(f"problem sizes : {problem_sizes}")
+    print(f"trials/cell   : {NTRIALS}")
 
-        HAS_CUPY = True
-
-        def rosenbrock(x):
-            x = cp.asarray(x)
-            sum1 = ((x[1:] - x[:-1] ** 2.0) ** 2.0).sum(axis=0)
-            sum2 = cp.square(1.0 - x[:-1]).sum(axis=0)
-            return 100.0 * sum1 + sum2
-
-        def rosenbrock_grad(x):
-            x = cp.asarray(x)
-            g = cp.zeros(x.shape)
-            # derivation of sum1
-            g[1:] += 100.0 * (2.0 * x[1:] - 2.0 * x[:-1] ** 2.0)
-            g[:-1] += 100.0 * (-4.0 * x[1:] * x[:-1] + 4.0 * x[:-1] ** 3.0)
-            # derivation of sum2
-            g[:-1] += 2.0 * (x[:-1] - 1.0)
-            return g
-
-        print("CuPy is available")
-    except ImportError:
-        from lbfgsb.benchmarks import rosenbrock, rosenbrock_grad
-
-        HAS_CUPY = False
-        print("CuPy is not available")
-
-    set_backend_to_cupy()
-
-    # Run benchmarks for each backend
-    results = {}
-
-    # Run NumPy benchmark
-    print("\n" + "=" * 70)
-    print("Running NumPy Benchmark")
-    print("=" * 70)
-    results = benchmark_lbfgsb(fun=rosenbrock, jac=rosenbrock_grad)
+    results = benchmark(fun=rosenbrock, jac=rosenbrock_grad)
+    plot_results(results)

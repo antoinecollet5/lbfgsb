@@ -146,3 +146,8 @@ logging-format-style = "fstr"
 # skip assert warnings with codacy
 [tool.bandit]
 skips = ["B101"]
+
+[tool.ty.rules]
+unresolved-import = "ignore"
+empty-body = "ignore"
+invalid-argument-type = "ignore"

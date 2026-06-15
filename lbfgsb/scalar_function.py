@@ -1,15 +1,15 @@
 # SPDX-License-Identifier: BSD-3-Clause
-# Copyright (c) 2025 Antoine COLLET
+# Copyright (c) 2024-2026 Antoine COLLET
 
 from __future__ import annotations
 
 from typing import Callable, Dict, Optional, Tuple, Union, cast
 
+import numpy as np
 from numpy.typing import ArrayLike
-from typing_extensions import Literal  # for compatibility with python 3.7
 from scipy.optimize._numdiff import approx_derivative
+from typing_extensions import Literal  # for compatibility with python 3.7
 
-from lbfgsb.mathops import np, optimize, sp
 from lbfgsb.types import NDArrayFloat
 
 FDMethod = Literal["2-point", "3-point", "cs"]
@@ -344,7 +344,7 @@ def prepare_scalar_function(
 
     x0 : ndarray, shape (n,)
         Initial point.
-        
+
     jac : callable, bool, {'2-point', '3-point', 'cs'} or None, optional
         Gradient evaluation method.
 

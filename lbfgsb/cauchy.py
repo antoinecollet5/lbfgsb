@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: BSD-3-Clause
-# Copyright (c) 2025 Antoine COLLET
+# Copyright (c) 2024-2026 Antoine COLLET
 
 """
 Implement a function to compute the generalized Cauchy point (GCP) for the L-BFGS-B
@@ -31,12 +31,15 @@ constrained optimization.
 import logging
 from typing import Optional, Tuple
 
-from lbfgsb._numba_helpers import njit
-from lbfgsb.bfgsmats import LBFGSB_MATRICES, bmv, bmv_numba
-from lbfgsb.mathops import np
-from lbfgsb.types import NDArrayFloat, NDArrayInt
+import numpy as _np  # real numpy for module-level constant and numba paths
+import numpy as np  # alias required by @njit decorated functions (numba numpy interop)
 
-_FLOAT_MAX = np.finfo(np.float64).max
+from lbfgsb._numba_helpers import njit
+from lbfgsb.backend import Backend, NumbaBackend, get_backend
+from lbfgsb.bfgsmats import LBFGSB_MATRICES, bmv, bmv_numba
+from lbfgsb.types import AnyArray, NDArrayFloat
+
+_FLOAT_MAX = _np.finfo(_np.float64).max
 
 
 def display_start_point(
@@ -84,47 +87,47 @@ def display_start_point(
 
 
 def _get_cauchy_point_numpy(
-    x: NDArrayFloat,
-    grad: NDArrayFloat,
-    lb: NDArrayFloat,
-    ub: NDArrayFloat,
-    W: NDArrayFloat,
+    x: AnyArray,
+    grad: AnyArray,
+    lb: AnyArray,
+    ub: AnyArray,
+    W: AnyArray,
     theta: float,
-    invMfactors: Tuple[NDArrayFloat, NDArrayFloat],
+    invMfactors: Tuple[AnyArray, AnyArray],
     use_factor: bool,
     iprint: int,
     logger: Optional[logging.Logger] = None,
+    nx: Optional[Backend] = None,
 ):
+    if nx is None:
+        from lbfgsb.backend import get_backend as _get_backend
+
+        nx = _get_backend(x)
     eps_f_sec = 1e-30
-    x_cp: NDArrayFloat = x.copy()
+    x_cp = nx.copy(x)
 
     # To define the breakpoints in each coordinate direction, we compute
-    t = np.empty_like(grad)
-    t.fill(np.inf)
+    t = nx.empty_like(grad)
+    t = t + nx.inf()  # fill with inf via broadcast (JAX-safe)
     # masks
     neg = grad < 0
     pos = grad > 0
     # update breakpoints
-    t[neg] = (x[neg] - ub[neg]) / grad[neg]
-    t[pos] = (x[pos] - lb[pos]) / grad[pos]
+    t = nx.where(neg, (x - ub) / grad, t)
+    t = nx.where(pos, (x - lb) / grad, t)
 
     # used to store the Cauchy direction `P(x-tg)-x`.
-    d = np.where(t == 0, 0.0, -grad)
+    d = nx.where(t == 0, 0.0, -grad)
 
-    # In the end, F is the list of ordered breakpoint indices
-    # sort {t;,i = 1,. ..,n} in increasing order to obtain the ordered
-    # set {tj :tj <= tj+1 ,j = 1, ...,n}.
-    # Keep only the indices where t > 0
-    # Note: sorts only positive breakpoints to reduces sort cost from O(n log n)
-    # to O(k log k) where k ≪ n in practice
-    pos_idx = np.flatnonzero(t > 0)
-    sorted_t_idx: NDArrayInt = pos_idx[np.argsort(t[pos_idx])]
+    # sort positive breakpoints
+    pos_idx = nx.flatnonzero(t > 0)
+    sorted_t_idx = pos_idx[nx.argsort(t[pos_idx])]
 
     # Initialization
-    p = W.T @ d  # 2mn operations
+    p = W.T @ d  # 2mn operations  # ty:ignore[unresolved-attribute]
 
     # Initialize c = W'(xcp - x) = 0.
-    c: NDArrayFloat = np.zeros(p.size)
+    c = nx.zeros((p.size,))
 
     # Initialize f1
     f_prime: float = -d.dot(d)  # n operations
@@ -181,11 +184,11 @@ def _get_cauchy_point_numpy(
             break
 
         # Fix one variable and reset the corresponding component of d to zero.
-        if d[ibp] > 0:
-            x_cp[ibp] = ub[ibp]
-        elif d[ibp] < 0:
-            x_cp[ibp] = lb[ibp]
-        zb = x_cp[ibp] - x[ibp]
+        if float(d[ibp]) > 0:
+            x_cp = nx.set_item(x_cp, ibp, float(ub[ibp]))
+        elif float(d[ibp]) < 0:
+            x_cp = nx.set_item(x_cp, ibp, float(lb[ibp]))
+        zb = float(x_cp[ibp]) - float(x[ibp])
 
         if iprint >= 100 and logger is not None:
             # ibp +1 to match the Fortran code (because index starts at 1)
@@ -200,33 +203,35 @@ def _get_cauchy_point_numpy(
         # f1 += delta_t * f2 + g_b * (g_b + theta * zb - W_b.dot(M.dot(c)))
         # f2 -= g_b * (g_b * theta + W_b.dot(M.dot(2 * p + g_b * W_b)))
         # 2) New way with the cholesky factorization
-        f_prime += delta_t * f_second + g_b * (g_b + theta * zb)
-        f_second -= g_b * g_b * theta
+        f_prime = f_prime + g_b * (g_b + zb * theta) + delta_t * f_second  # ty:ignore[unsupported-operator]
+        f_second = f_second - g_b * g_b * theta  # ty:ignore[unsupported-operator]
 
         # First iteration -> invMfactors and M are worse zero.
         # And cho_solve produces nan
         if use_factor:
-            invMWb = bmv(invMfactors, W_b)
-            f_prime -= g_b * invMWb.dot(c)
-            f_second -= g_b * (2.0 * invMWb.dot(p) + g_b * invMWb.dot(W_b))
+            invMWb = bmv(invMfactors, W_b, nx)
+            f_prime -= g_b * float(invMWb.dot(c))
+            f_second -= g_b * (
+                2.0 * float(invMWb.dot(p)) + g_b * float(invMWb.dot(W_b))  # ty:ignore[unsupported-operator, no-matching-overload]
+            )
 
         # this is a trick of the original FORTRAN code that prevents very low
         # values of f2
         f_second = max(f_second, eps_f_sec * f2_org)
 
         # Fix one variable and reset the corresponding component of d to zero.
-        p += g_b * W_b
-        d[ibp] = 0
+        p = p + g_b * W_b
+        d = nx.set_item(d, ibp, 0.0)
         delta_t_min = -f_prime / f_second
         t_old = t_cur + 0.0  # copy
 
         _i += 1
         if _i + 1 < nbreak:
             ibp = sorted_t_idx[_i + 1].item()
-            t_cur = t[ibp]
+            t_cur = float(t[ibp])
         else:
             # to ensure that delta_t > delta_t_min and break the while
-            t_cur = np.inf
+            t_cur = nx.inf()
 
         delta_t = t_cur - t_old
         nseg += 1
@@ -238,11 +243,11 @@ def _get_cauchy_point_numpy(
                 nseg, f_prime, f_second, None, delta_t_min, iprint, logger
             )
 
-    delta_t_min = 0 if delta_t_min < 0 else delta_t_min
+    delta_t_min = 0.0 if delta_t_min < 0 else delta_t_min
     t_old += delta_t_min
 
     mask = t >= t_cur
-    x_cp[mask] = x[mask] + t_old * d[mask]
+    x_cp = nx.where(mask, x + t_old * d, x_cp)
 
     return x_cp, c + delta_t_min * p
 
@@ -285,7 +290,7 @@ def _safe_sumsq_numba(x: NDArrayFloat) -> float:
 
     # Need max_abs**2 * scaled_sum <= FLOAT_MAX.
     # Avoid computing max_abs**2 directly before checking.
-    limit = np.sqrt(_FLOAT_MAX / scaled_sum)
+    limit = _np.sqrt(_FLOAT_MAX / scaled_sum)
 
     if max_abs > limit:
         return np.inf
@@ -548,15 +553,16 @@ def _get_cauchy_point_numba(
 
 
 def get_cauchy_point(
-    x: NDArrayFloat,
-    grad: NDArrayFloat,
-    lb: NDArrayFloat,
-    ub: NDArrayFloat,
+    x: AnyArray,
+    grad: AnyArray,
+    lb: AnyArray,
+    ub: AnyArray,
     mats: LBFGSB_MATRICES,
     iprint: int,
     logger: Optional[logging.Logger] = None,
+    nx: Optional[Backend] = None,
     is_use_numba_jit: bool = False,
-) -> Tuple[NDArrayFloat, NDArrayFloat]:
+) -> Tuple[AnyArray, AnyArray]:
     r"""
     Computes the generalized Cauchy point (GCP).
 
@@ -613,10 +619,14 @@ def get_cauchy_point(
       ACM Transactions on Mathematical Software, 38, 1.
     """
     # Note: the variable names follow the FORTRAN original implementation
+    if nx is None:
+        nx = get_backend(x)
+
     if iprint >= 99 and logger is not None:
         logger.info("---------------- CAUCHY entered-------------------")
 
-    if is_use_numba_jit:
+    use_numba = is_use_numba_jit or isinstance(nx, NumbaBackend)
+    if use_numba:
         x_cp, c = _get_cauchy_point_numba(
             x, grad, lb, ub, mats.W, mats.theta, mats.invMfactors, mats.use_factor
         )
@@ -632,6 +642,7 @@ def get_cauchy_point(
             mats.use_factor,
             iprint,
             logger,
+            nx,
         )
 
     if logger is not None:

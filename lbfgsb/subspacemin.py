@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: BSD-3-Clause
-# Copyright (c) 2025 Antoine COLLET
+# Copyright (c) 2024-2026 Antoine COLLET
 
 """
 Subspace minimization procedure of the L-BFGS-B algorithm,
@@ -35,10 +35,12 @@ convex quadratic problems.
 import logging
 from typing import Optional, Tuple
 
+import numpy as _np  # real numpy — only for np.isin, np.arange, np.testing (index ops)
+
 from lbfgsb._numba_helpers import njit
+from lbfgsb.backend import Backend, NumbaBackend, get_backend
 from lbfgsb.bfgsmats import LBFGSB_MATRICES, bmv, bmv_numba
-from lbfgsb.mathops import cholesky_factorization, np, sp
-from lbfgsb.types import NDArrayFloat, NDArrayInt
+from lbfgsb.types import AnyArray, NDArrayFloat, NDArrayInt
 
 
 def get_freev(
@@ -84,16 +86,16 @@ def get_freev(
 
     # Array of free variable and active variable indices (from 0 to n-1)
     free_vars: NDArrayInt = ((x_cp != ub) & (x_cp != lb)).nonzero()[0]
-    active_vars: NDArrayInt = (~np.isin(np.arange(n), free_vars)).nonzero()[0]
+    active_vars: NDArrayInt = (~_np.isin(_np.arange(n), free_vars)).nonzero()[0]
 
     # Some display
     # 1) Indicate which variable is leaving the free variables and which is
     # entering the free variables -> Not for the first iteration
     if iprint > 100 and iter > 0 and free_vars_old is not None and logger is not None:
         # Variables leaving the free variables
-        leaving_vars = active_vars[np.isin(active_vars, free_vars_old)]
+        leaving_vars = active_vars[_np.isin(active_vars, free_vars_old)]
         logger.info(f"Variables leaving the free variables set = {leaving_vars}")
-        entering_vars = free_vars[~np.isin(free_vars, free_vars_old)]
+        entering_vars = free_vars[~_np.isin(free_vars, free_vars_old)]
 
         logger.info(f"Variables entering the free variables set = {entering_vars}")
         logger.info(
@@ -121,7 +123,7 @@ def form_k(
     )
     if is_assert_correct:
         K_wm = form_k_from_wm(WTZ, mats.invMfactors, mats.theta)
-        np.testing.assert_allclose(K, K_wm, atol=1e-8)
+        _np.testing.assert_allclose(K, K_wm, atol=1e-8)
     return K
 
 
@@ -152,23 +154,23 @@ def form_k_from_za(
     ----------
     """
     if len(free_vars) == 0:
-        YTZZTY = np.zeros((Y.shape[1], Y.shape[1]))
-        STZZTY = np.zeros((Y.shape[1], Y.shape[1]))
+        YTZZTY = _np.zeros((Y.shape[1], Y.shape[1]))
+        STZZTY = _np.zeros((Y.shape[1], Y.shape[1]))
     else:
-        ZZTY = np.zeros(np.shape(Y), dtype=np.float64)
+        ZZTY = _np.zeros(_np.shape(Y), dtype=_np.float64)
         ZZTY[free_vars, :] = Y[free_vars, :]
         YTZZTY = Y.T @ ZZTY
         STZZTY = S.T @ ZZTY
 
     if len(active_vars) == 0:
-        STAATS = np.zeros((S.shape[1], S.shape[1]))
+        STAATS = _np.zeros((S.shape[1], S.shape[1]))
     else:
-        AATS = np.zeros(np.shape(S), dtype=np.float64)
+        AATS = _np.zeros(_np.shape(S), dtype=_np.float64)
         AATS[active_vars, :] = S[active_vars, :]
         STAATS = S.T @ AATS
 
     m = L.shape[0]
-    K = np.zeros((m * 2, m * 2))
+    K = _np.zeros((m * 2, m * 2))
 
     K[:m, :m] = -D - (1.0 / theta) * YTZZTY
     K[:m, m:] = (L - STZZTY).T
@@ -210,8 +212,8 @@ def form_k_from_wm(
     """
     # Instead we build K directly as M^{-1}(I - 1/theta M WT Z @ ZT @ W))
     K = invMfactors[0] @ invMfactors[1]
-    N = -1 / theta * bmv(invMfactors, WTZ.dot(np.transpose(WTZ)))
-    np.fill_diagonal(N, N.diagonal() + 1)
+    N = -1 / theta * bmv(invMfactors, WTZ.dot(_np.transpose(WTZ)))
+    _np.fill_diagonal(N, N.diagonal() + 1)
     return K @ N
 
 
@@ -224,7 +226,7 @@ def solve_triangular_numba(
         solve_triangular(U, lower=False)
     """
     n = v.size
-    y = np.empty(n)
+    y = _np.empty(n)
 
     if lower:
         # Forward solve: L y = v
@@ -274,7 +276,7 @@ def factorize_k(
     # The factorization only makes sense if K is at least (2, 2).
     if K.size < 4:
         assert K.size == 1
-        return np.sqrt(K)
+        return _np.sqrt(K)
 
     # Extract the subblocks of K with K12 = K21.T (K is symmetric)
     m = int(K.shape[0] / 2)
@@ -284,44 +286,47 @@ def factorize_k(
 
     # LK is a lower triangle of the matrix factorization LK @ E @ LK.T
     # Initiate the array
-    LK = np.zeros((2 * m, 2 * m), dtype=np.float64)
+    LK = _np.zeros((2 * m, 2 * m), dtype=_np.float64)
 
     # Form L, the lower part of LL' = D+Y' ZZ'Y/theta
     # NOTE: overwrite_a=False was deleted here, unsure if this is right
-    L11 = cholesky_factorization(K11)
+    import scipy.linalg as _sla
+
+    L11 = _sla.cholesky(K11, lower=True)
     # Top-left
     LK[:m, :m] = L11
 
     # then form L^-1(-L_a'+R_z') in the (1,2) block.
-    L12 = sp.linalg.solve_triangular(L11, K12, lower=True, trans="N")
+    L12 = _sla.solve_triangular(L11, K12, lower=True, trans="N")
     # Top-right
     LK[m:, :m] = L12.T
 
     # Form L22 from S'AA'S*theta + (L^-1(-L_a'+R_z'))'L^-1(-L_a'+R_z')
     # Bottom-right
-    LK[m:, m:] = cholesky_factorization(K22 + L12.T @ L12)
+    LK[m:, m:] = _sla.cholesky(K22 + L12.T @ L12, lower=True)
 
     # Test the factorization
     if is_assert_correct:
-        E = np.identity(n=2 * m)
+        E = _np.identity(n=2 * m)
         E[:m, :m] *= -1
-        np.testing.assert_allclose(LK @ E @ LK.T, K, atol=1e-8)
+        _np.testing.assert_allclose(LK @ E @ LK.T, K, atol=1e-8)
     return LK
 
 
 def subspace_minimization(
-    x: NDArrayFloat,
-    xc: NDArrayFloat,
+    x: AnyArray,
+    xc: AnyArray,
     free_vars: NDArrayInt,
     active_vars: NDArrayInt,
-    c: NDArrayFloat,
-    grad: NDArrayFloat,
-    lb: NDArrayFloat,
-    ub: NDArrayFloat,
+    c: AnyArray,
+    grad: AnyArray,
+    lb: AnyArray,
+    ub: AnyArray,
     mats: LBFGSB_MATRICES,
+    nx: Optional[Backend] = None,
     is_check_factorizations: bool = False,
     is_use_numba_jit: bool = False,
-) -> NDArrayFloat:
+) -> AnyArray:
     r"""
     Computes an approximate solution of the subspace problem.
 
@@ -379,6 +384,10 @@ def subspace_minimization(
     """
     # Direct primal method
 
+    if nx is None:
+        nx = get_backend(x)
+
+    use_numba = is_use_numba_jit or isinstance(nx, NumbaBackend)
     invThet = 1.0 / mats.theta
 
     # d = (1/theta)r + (1/theta*2) Z'WK^(-1)W'Z r.
@@ -402,7 +411,7 @@ def subspace_minimization(
     W_free = mats.W[free_vars, :]
     WTZ = W_free.T  # shape (m, t)
 
-    r = grad + mats.theta * (xc - x)
+    r = grad + (xc - x) * mats.theta
     # At iter 0, M is [[0.0]] and so is invMfactors
     if mats.use_factor:
         r -= mats.W.dot(bmv(mats.invMfactors, c))
@@ -429,33 +438,33 @@ def subspace_minimization(
     if LK is not None:
         # LK is the lowest triangle of the cholesky factorization
         # of (I - 1/theta M WT Z @ ZT @ W)^{-1} M.
-        if is_use_numba_jit:
+        if use_numba:
             v = solve_triangular_numba(LK, v, lower=True)
         else:
-            v = sp.linalg.solve_triangular(LK, v, lower=True)
+            v = nx.solve_triangular_l(LK, v)
         v[: int(LK.shape[0] / 2)] *= -1
-        if is_use_numba_jit:
+        if use_numba:
             v = solve_triangular_numba(LK.T, v, lower=False)
         else:
-            v = sp.linalg.solve_triangular(LK.T, v, lower=False)
+            v = nx.solve_triangular_u(LK.T, v)
     else:
         # This is less efficient but it should only happen if LK is None, i.e., at
         # iteration 0
         if mats.use_factor:
-            if is_use_numba_jit:
+            if use_numba:
                 v = bmv_numba(*mats.invMfactors, v)
                 N = -bmv_numba(*mats.invMfactors, invThet * (WTZ @ WTZ.T))
             else:
-                v = bmv(mats.invMfactors, v)
-                N = -bmv(mats.invMfactors, invThet * (WTZ @ WTZ.T))
+                v = bmv(mats.invMfactors, v, nx)
+                N = -bmv(mats.invMfactors, invThet * (WTZ @ WTZ.T), nx)
         else:
             M = mats.invMfactors[0] @ mats.invMfactors[1]
             v = M @ v
             N = -M @ (invThet * WTZ @ WTZ.T)
         # Add the identity matrix: this is the same as N = np.eye(N.shape[0]) - M.dot(N)
         # but much faster
-        np.fill_diagonal(N, N.diagonal() + 1)
-        v = np.linalg.solve(N, v)
+        N = nx.fill_diagonal(N, float(N.diagonal()[0]) + 1)
+        v = nx.solve(N, v)
 
     # Careful, there is an error in the original paper (the negative sign is
     # missing) !
@@ -468,16 +477,14 @@ def subspace_minimization(
         d = dHat[mask]
         xc_m = xc_free[mask]
 
-        step = np.empty_like(d)
-
+        # Compute max feasible step — functional (no in-place)
         pos = d > 0.0
-        step[pos] = (ub_free[mask][pos] - xc_m[pos]) / d[pos]
-        step[~pos] = (lb_free[mask][~pos] - xc_m[~pos]) / d[~pos]
+        step = nx.where(pos, (ub_free[mask] - xc_m) / d, (lb_free[mask] - xc_m) / d)
 
-        alpha_star = min(1.0, step.min())
+        alpha_star = min(1.0, float(nx.min(step)))
     else:
         alpha_star = 1.0
 
-    # Eq (5.2) -> update free variables only
-    xc[free_vars] = xc_free + alpha_star * dHat
+    # Eq (5.2) -> update free variables only (nx.set_item is JAX-safe)
+    xc = nx.set_item(xc, free_vars, xc_free + alpha_star * dHat)
     return xc
