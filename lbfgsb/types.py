@@ -16,10 +16,9 @@ Two tiers:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Protocol, TypeVar, runtime_checkable
-
 import numpy as np
 import numpy.typing as npt
+from typing_extensions import TYPE_CHECKING, Any, Protocol, TypeVar, runtime_checkable
 
 if TYPE_CHECKING:
     # These imports only run inside the type checker, never at runtime,
