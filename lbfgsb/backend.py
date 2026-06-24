@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     try:
         import cupy as cp
     except ImportError:
-        cp = None  # ty:ignore[invalid-assignment]
+        cp = None
 
     try:
         import jax
